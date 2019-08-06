@@ -17,13 +17,18 @@ __C.WORKERS = 4
 __C.TRAIN = edict()
 __C.TRAIN.FLAG = True
 __C.TRAIN.LEARNING_RATE = 0.0001
+__C.TRAIN.LR_DECAY = 0.1
+__C.TRAIN.DECAY_PATIENCE = 5
 __C.TRAIN.BATCH_SIZE = 64
+__C.TRAIN.VAL_BATCH_SIZE = 200
 __C.TRAIN.MAX_EPOCHS = 25
 __C.TRAIN.SNAPSHOT_INTERVAL = 5
 __C.TRAIN.WEIGHT_INIT = "xavier_uniform"
 __C.TRAIN.CLIP_GRADS = True
 __C.TRAIN.CLIP = 8
 __C.TRAIN.MAX_STEPS = 4
+__C.TRAIN.NUM_CLASSES = 28
+__C.TRAIN.MODEL_PATH = ''
 __C.TRAIN.EALRY_STOPPING = True
 __C.TRAIN.PATIENCE = 5
 __C.TRAIN.VAR_DROPOUT = False
@@ -32,6 +37,8 @@ __C.TRAIN = dict(__C.TRAIN)
 # Dataset options
 __C.DATASET = edict()
 __C.DATASET.DATA_DIR = ''
+__C.DATASET.TRAIN_SPLIT_FILE_PATH = ''
+__C.DATASET.VAL_SPLIT_FILE_PATH = ''
 __C.DATASET = dict(__C.DATASET)
 
 
@@ -78,8 +85,12 @@ def _merge_a_into_b(a, b):
 
 def cfg_from_file(filename):
     """Load a config file and merge it into the default options."""
-    import yaml
+    from yaml import load
+    try:
+        from yaml import CLoader as Loader
+    except:
+        from yaml import Loader
     with open(filename, 'r') as f:
-        yaml_cfg = edict(yaml.load(f))
+        yaml_cfg = edict(load(f, Loader=Loader))
 
     _merge_a_into_b(yaml_cfg, __C)

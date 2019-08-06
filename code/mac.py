@@ -4,12 +4,15 @@ import torch.nn.init as init
 from torch.autograd import Variable
 
 from utils import *
+from models.rgb_resnet import rgb_resnet50
 
 
-def load_MAC(cfg, vocab):
-    kwargs = {'vocab': vocab,
-              'max_step': cfg.TRAIN.MAX_STEPS
-              }
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+def load_MAC(cfg):
+    kwargs = {
+        'max_step': cfg.TRAIN.MAX_STEPS
+    }
 
     model = MACNetwork(cfg, **kwargs)
     model_ema = MACNetwork(cfg, **kwargs)
@@ -40,45 +43,28 @@ class ControlUnit(nn.Module):
 
         self.module_dim = module_dim
 
-    def mask(self, question_lengths, device):
-        max_len = question_lengths.max().item()
-        mask = torch.arange(max_len, device=device).expand(len(question_lengths), int(max_len)) < question_lengths.unsqueeze(1)
-        mask = mask.float()
-        ones = torch.ones_like(mask)
-        mask = (ones - mask) * (1e-30)
-        return mask
-
-    def forward(self, question, context, question_lengths, step):
+    def forward(self, memory, step):
         """
         Args:
-            question: external inputs to control unit (the question vector).
-                [batchSize, ctrlDim]
-            context: the representation of the words used to compute the attention.
-                [batchSize, questionLength, ctrlDim]
+            memory: last memory vector.
             control: previous control state
-            question_lengths: the length of each question.
-                [batchSize]
             step: which step in the reasoning chain
         """
         # compute interactions with question words
-        question = self.control_input(question)
-        question = self.control_input_u[step](question)
+        # question = self.control_input(question)
+        next_control = self.control_input_u[step](memory)
 
-        newContControl = question
-        newContControl = torch.unsqueeze(newContControl, 1)
-        interactions = newContControl * context
+        # newContControl = memory
+        # newContControl = torch.unsqueeze(newContControl, 1)
+        # interactions = newContControl * context
 
-        # compute attention distribution over words and summarize them accordingly
-        logits = self.attn(interactions)
+        # # compute attention distribution over words and summarize them accordingly
+        # logits = self.attn(interactions)
 
-        # TODO: add mask again?!
-        # question_lengths = torch.cuda.FloatTensor(question_lengths)
-        # mask = self.mask(question_lengths, logits.device).unsqueeze(-1)
-        # logits += mask
-        attn = F.softmax(logits, 1)
+        # attn = F.softmax(logits, 1)
 
-        # apply soft attention to current context words
-        next_control = (attn * context).sum(1)
+        # # apply soft attention to current context words
+        # next_control = (attn * context).sum(1)
 
         return next_control
 
@@ -166,7 +152,7 @@ class MACUnit(nn.Module):
     def __init__(self, cfg, module_dim=512, max_step=4):
         super().__init__()
         self.cfg = cfg
-        self.control = ControlUnit(cfg, module_dim, max_step)
+        self.control = ControlUnit(cfg, module_dim, max_step+1)
         self.read = ReadUnit(module_dim)
         self.write = WriteUnit(cfg, module_dim)
 
@@ -175,24 +161,24 @@ class MACUnit(nn.Module):
         self.module_dim = module_dim
         self.max_step = max_step
 
-    def zero_state(self, batch_size, question):
+    def zero_state(self, batch_size):
         initial_memory = self.initial_memory.expand(batch_size, self.module_dim)
-        initial_control = question
 
         if self.cfg.TRAIN.VAR_DROPOUT:
             memDpMask = generateVarDpMask((batch_size, self.module_dim), 0.85)
         else:
             memDpMask = None
 
-        return initial_control, initial_memory, memDpMask
+        return initial_memory, memDpMask
 
-    def forward(self, context, question, knowledge, question_lengths):
-        batch_size = question.size(0)
-        control, memory, memDpMask = self.zero_state(batch_size, question)
+    def forward(self, knowledge):
+        batch_size = knowledge.size(0)
+        memory, memDpMask = self.zero_state(batch_size)
+        control = self.control(memory, 0)
 
         for i in range(self.max_step):
             # control unit
-            control = self.control(question, context, question_lengths, i)
+            control = self.control(memory, i+1)
             # read unit
             info = self.read(memory, knowledge, control, memDpMask)
             # write unit
@@ -202,97 +188,84 @@ class MACUnit(nn.Module):
 
 
 class InputUnit(nn.Module):
-    def __init__(self, cfg, vocab_size, wordvec_dim=300, rnn_dim=512, module_dim=512, bidirectional=True):
+    def __init__(self, cfg, wordvec_dim=300, rnn_dim=512, module_dim=512, bidirectional=True):
         super(InputUnit, self).__init__()
 
         self.dim = module_dim
         self.cfg = cfg
 
-        self.stem = nn.Sequential(nn.Dropout(p=0.18),
-                                  nn.Conv2d(1024, module_dim, 3, 1, 1),
-                                  nn.ELU(),
-                                  nn.Dropout(p=0.18),
-                                  nn.Conv2d(module_dim, module_dim, kernel_size=3, stride=1, padding=1),
-                                  nn.ELU())
+        # self.stem = nn.Sequential(nn.Dropout(p=0.18),
+        #                           nn.Conv2d(1024, module_dim, 3, 1, 1),
+        #                           nn.ELU(),
+        #                           nn.Dropout(p=0.18),
+        #                           nn.Conv2d(module_dim, module_dim, kernel_size=3, stride=1, padding=1),
+        #                           nn.ELU())
+        params = torch.load(cfg.TRAIN.MODEL_PATH, map_location=device)
+        self.stem = rgb_resnet50(pretrained=False, num_classes=cfg.TRAIN.NUM_CLASSES)
+        self.stem.load_state_dict(params['state_dict'])
+        self.stem.fc_action = nn.Identity()
+        self.stem.eval()
+        for p in self.stem.parameters():
+            p.requires_grad = False
 
         self.bidirectional = bidirectional
         if bidirectional:
             rnn_dim = rnn_dim // 2
 
-        self.encoder_embed = nn.Embedding(vocab_size, wordvec_dim)
         self.encoder = nn.LSTM(wordvec_dim, rnn_dim, batch_first=True, bidirectional=bidirectional)
         self.embedding_dropout = nn.Dropout(p=0.15)
-        self.question_dropout = nn.Dropout(p=0.08)
 
-    def forward(self, image, question, question_len):
-        b_size = question.size(0)
+    def forward(self, image):
+        b_size = image.size(0)
 
         # get image features
         img = self.stem(image)
         img = img.view(b_size, self.dim, -1)
         img = img.permute(0,2,1)
 
-        # get question and contextual word embeddings
-        embed = self.encoder_embed(question)
-        embed = self.embedding_dropout(embed)
-        embed = nn.utils.rnn.pack_padded_sequence(embed, question_len, batch_first=True)
-
-        contextual_words, (question_embedding, _) = self.encoder(embed)
-        if self.bidirectional:
-            question_embedding = torch.cat([question_embedding[0], question_embedding[1]], -1)
-        question_embedding = self.question_dropout(question_embedding)
-
-        contextual_words, _ = nn.utils.rnn.pad_packed_sequence(contextual_words, batch_first=True)
-
-        return question_embedding, contextual_words, img
+        return img
 
 
 class OutputUnit(nn.Module):
     def __init__(self, module_dim=512, num_answers=28):
         super(OutputUnit, self).__init__()
 
-        self.question_proj = nn.Linear(module_dim, module_dim)
-
         self.classifier = nn.Sequential(nn.Dropout(0.15),
-                                        nn.Linear(module_dim * 2, module_dim),
+                                        nn.Linear(module_dim, module_dim),
                                         nn.ELU(),
                                         nn.Dropout(0.15),
                                         nn.Linear(module_dim, num_answers))
 
-    def forward(self, question_embedding, memory):
-        # apply classifier to output of MacCell and the question
-        question_embedding = self.question_proj(question_embedding)
-        out = torch.cat([memory, question_embedding], 1)
+    def forward(self, memory):
+        out = memory
         out = self.classifier(out)
 
         return out
 
 
 class MACNetwork(nn.Module):
-    def __init__(self, cfg, max_step, vocab):
+    def __init__(self, cfg, max_step):
         super().__init__()
 
         self.cfg = cfg
-        encoder_vocab_size = len(vocab['question_token_to_idx'])
 
-        self.input_unit = InputUnit(cfg, vocab_size=encoder_vocab_size)
+        self.input_unit = InputUnit(cfg)
 
-        self.output_unit = OutputUnit()
+        self.output_unit = OutputUnit(num_answers=cfg.TRAIN.NUM_CLASSES)
 
         self.mac = MACUnit(cfg, max_step=max_step)
 
         init_modules(self.modules(), w_init=self.cfg.TRAIN.WEIGHT_INIT)
-        nn.init.uniform_(self.input_unit.encoder_embed.weight, -1.0, 1.0)
         nn.init.normal_(self.mac.initial_memory)
 
-    def forward(self, image, question, question_len):
-        # get image, word, and sentence embeddings
-        question_embedding, contextual_words, img = self.input_unit(image, question, question_len)
+    def forward(self, image):
+        # get image embedding
+        img = self.input_unit(image)
 
         # apply MacCell
-        memory = self.mac(contextual_words, question_embedding, img, question_len)
+        memory = self.mac(img)
 
         # get classification
-        out = self.output_unit(question_embedding, memory)
+        out = self.output_unit(memory)
 
         return out

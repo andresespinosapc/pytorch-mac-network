@@ -1,0 +1,24 @@
+WORKERS: 8
+CUDA: False
+
+TRAIN:
+    FLAG: True
+    LEARNING_RATE: 0.0001
+    LR_DECAY: 0.1
+    DECAY_PATIENCE: 5
+    BATCH_SIZE: 1
+    VAL_BATCH_SIZE: 1
+    MAX_EPOCHS: 25
+    SNAPSHOT_INTERVAL: 5
+    WEIGHT_INIT: "xavier_uniform"
+    EALRY_STOPPING: True
+    PATIENCE: 5
+    CLIP_GRADS: True
+    MAX_STEPS: 4
+    NUM_CLASSES: 101
+    MODEL_PATH: 'data/ucf101_resnet50.pth.tar'
+
+DATASET:
+    DATA_DIR: 'data/ucf101_jpegs_256'
+    TRAIN_SPLIT_FILE_PATH: 'data/train_rgb_split1.txt'
+    VAL_SPLIT_FILE_PATH: 'data/val_rgb_split1.txt'
