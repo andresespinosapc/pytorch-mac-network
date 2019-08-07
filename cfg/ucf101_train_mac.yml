@@ -20,5 +20,6 @@ TRAIN:
 
 DATASET:
     DATA_DIR: '/vault/caspillaga/actions_transformations/ucf101_jpegs_256'
+    FEATS_FILE_PATH: 'data/ucf101_split1_feats.h5'
     TRAIN_SPLIT_FILE_PATH: '/vault/caspillaga/actions_transformations/two-stream-pytorch/datasets/settings/ucf101/train_rgb_split1.txt'
     VAL_SPLIT_FILE_PATH: '/vault/caspillaga/actions_transformations/two-stream-pytorch/datasets/settings/ucf101/val_rgb_split1.txt'

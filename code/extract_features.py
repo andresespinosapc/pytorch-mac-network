@@ -17,7 +17,6 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('out_path')
     parser.add_argument('--cfg')
     args = parser.parse_args()
     cfg_from_file(args.cfg)
@@ -27,6 +26,7 @@ if __name__ == "__main__":
     net.load_state_dict(params['state_dict'])
     net = nn.Sequential(*list(net.children())[:-4])
     net.eval()
+    net.to(device)
 
     dataset = UCF101(root=cfg.DATASET.DATA_DIR, split_file_path=cfg.DATASET.TRAIN_SPLIT_FILE_PATH)
     dataloader = DataLoader(dataset=dataset, batch_size=cfg.TRAIN.VAL_BATCH_SIZE, shuffle=True,
@@ -37,7 +37,7 @@ if __name__ == "__main__":
                                     shuffle=False, num_workers=cfg.WORKERS)
 
     with torch.no_grad():
-        with h5py.File(args.out_path, 'w') as hf:
+        with h5py.File(cfg.DATASET.FEATS_FILE_PATH, 'w') as hf:
             feats_list = []
             for image, answer in tqdm(dataloader):
                 image = image.to(device)
