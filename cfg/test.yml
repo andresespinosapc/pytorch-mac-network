@@ -20,5 +20,6 @@ TRAIN:
 
 DATASET:
     DATA_DIR: 'data/ucf101_jpegs_256'
+    FEATS_FILE_PATH: 'data/ucf101_split1_feats.h5'
     TRAIN_SPLIT_FILE_PATH: 'data/train_rgb_split1.txt'
     VAL_SPLIT_FILE_PATH: 'data/val_rgb_split1.txt'

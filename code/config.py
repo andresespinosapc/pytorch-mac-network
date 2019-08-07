@@ -37,6 +37,7 @@ __C.TRAIN = dict(__C.TRAIN)
 # Dataset options
 __C.DATASET = edict()
 __C.DATASET.DATA_DIR = ''
+__C.DATASET.FEATS_FILE_PATH = ''
 __C.DATASET.TRAIN_SPLIT_FILE_PATH = ''
 __C.DATASET.VAL_SPLIT_FILE_PATH = ''
 __C.DATASET = dict(__C.DATASET)

@@ -101,7 +101,28 @@ class UCF101(data.Dataset):
         return torch.stack(frames), target
 
     def __len__(self):
-        return self.data.shape[0]    
+        return self.data.shape[0]
+
+class UCF101Feats(data.Dataset):
+    def __init__(self, feats_file_path, split_file_path):
+        with h5py.File(feats_file_path, 'r') as hf:
+            if 'train' in split_file_path:
+                self.feats = hf['train'][:]
+            else:
+                self.feats = hf['val'][:]
+
+        targets = []
+        for i, line in enumerate(open(split_file_path)):
+            file_name, duration_str, target_str = line.split(' ')
+            duration, target = int(duration_str), int(target_str)
+            targets.append(target)
+        self.targets = np.array(targets)
+
+    def __getitem__(self, index):
+        return self.feats[index], self.targets[index]
+
+    def __len__(self):
+        return self.feats.shape[0]    
 
 
 class ClevrDataset(data.Dataset):

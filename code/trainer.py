@@ -16,7 +16,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from utils import mkdir_p, save_model, load_vocab
-from datasets import UCF101, collate_fn_wo_questions
+from datasets import UCF101Feats, collate_fn_wo_questions
 import mac
 
 
@@ -71,11 +71,11 @@ class Trainer():
         cudnn.benchmark = True
 
         # load dataset
-        self.dataset = UCF101(root=self.data_dir, split_file_path=cfg.DATASET.TRAIN_SPLIT_FILE_PATH)
+        self.dataset = UCF101Feats(feats_file_path=cfg.DATASET.FEATS_FILE_PATH, split_file_path=cfg.DATASET.TRAIN_SPLIT_FILE_PATH)
         self.dataloader = DataLoader(dataset=self.dataset, batch_size=self.batch_size, shuffle=True,
                                        num_workers=cfg.WORKERS, drop_last=True)
 
-        self.dataset_val = UCF101(root=self.data_dir, split_file_path=cfg.DATASET.VAL_SPLIT_FILE_PATH)
+        self.dataset_val = UCF101Feats(feats_file_path=cfg.DATASET.FEATS_FILE_PATH, split_file_path=cfg.DATASET.VAL_SPLIT_FILE_PATH)
         self.dataloader_val = DataLoader(dataset=self.dataset_val, batch_size=self.batch_size_val, drop_last=True,
                                          shuffle=False, num_workers=cfg.WORKERS)
 

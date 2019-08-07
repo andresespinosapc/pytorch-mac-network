@@ -194,19 +194,12 @@ class InputUnit(nn.Module):
         self.dim = module_dim
         self.cfg = cfg
 
-        # self.stem = nn.Sequential(nn.Dropout(p=0.18),
-        #                           nn.Conv2d(1024, module_dim, 3, 1, 1),
-        #                           nn.ELU(),
-        #                           nn.Dropout(p=0.18),
-        #                           nn.Conv2d(module_dim, module_dim, kernel_size=3, stride=1, padding=1),
-        #                           nn.ELU())
-        params = torch.load(cfg.TRAIN.MODEL_PATH, map_location=device)
-        self.stem = rgb_resnet50(pretrained=False, num_classes=cfg.TRAIN.NUM_CLASSES)
-        self.stem.load_state_dict(params['state_dict'])
-        self.stem.fc_action = nn.Identity()
-        self.stem.eval()
-        for p in self.stem.parameters():
-            p.requires_grad = False
+        self.stem = nn.Sequential(nn.Dropout(p=0.18),
+                                  nn.Conv2d(1024, module_dim, 3, 1, 1),
+                                  nn.ELU(),
+                                  nn.Dropout(p=0.18),
+                                  nn.Conv2d(module_dim, module_dim, kernel_size=3, stride=1, padding=1),
+                                  nn.ELU())
 
         self.bidirectional = bidirectional
         if bidirectional:
