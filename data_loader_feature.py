@@ -15,13 +15,18 @@ class FeatureLoader(torch.utils.data.Dataset):
 
         self.data = h5py.File(self.path_features, 'r')[self.split]
 
+        self.unique_target = []
+        for elem in self.data['target']:
+            if elem not in self.unique_target:
+                self.unique_target.append(elem)
+
     def __getitem__(self, index):
         """
         [!] FPS jittering doesn't work with AV dataloader as of now
         """
 
         item = self.data['data'][index]
-        target = self.data['target'][index]
+        target = self.unique_target.index(self.data['target'][index])
         ind = self.data['video_id'][index]
 
         # format data to torch
