@@ -22,7 +22,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cfg', dest='cfg_file', help='optional config file', default='shapes_train.yml', type=str)
     parser.add_argument('--gpu',  dest='gpu_id', type=str, default='0')
-    parser.add_argument('--data_dir', dest='data_dir', type=str, default='')
+    parser.add_argument('--features_path', dest='features_path', type=str, default='')
     parser.add_argument('--manualSeed', type=int, help='manual seed')
     args = parser.parse_args()
     return args
@@ -43,13 +43,16 @@ def set_logdir(max_steps):
 
 
 if __name__ == "__main__":
+    if cfg.DATASET.DATA_TYPE != 'features':
+        raise NotImplementedError('Only features data type is allowed')
+
     args = parse_args()
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
     if args.gpu_id != -1:
         cfg.GPU_ID = args.gpu_id
-    if args.data_dir != '':
-        cfg.DATA_DIR = args.data_dir
+    if args.features_path != '':
+        cfg.FEATURES_PATH = args.features_path
     if args.manualSeed is None:
         args.manualSeed = random.randint(1, 10000)
     random.seed(args.manualSeed)

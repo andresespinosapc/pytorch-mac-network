@@ -3,6 +3,7 @@ import errno
 import numpy as np
 import glob
 import pickle
+import json
 
 from copy import deepcopy
 from config import cfg
@@ -84,6 +85,49 @@ def load_vocab(cfg):
     vocab['answer_idx_to_token'] = invert_dict(vocab['answer_token_to_idx'])
 
     return vocab
+
+
+def load_label_embeddings(cfg):
+    def invert_dict(d):
+        return {v: k for k, v in d.items()}
+
+    # Load word embeddings
+    word_to_vec = {}
+    for line in open(cfg.DATASET.GLOVE_PATH):
+        splitted = line.split(' ')
+        word = splitted[0]
+        vec = np.array([float(n) for n in splitted[1:]])
+        word_to_vec[word] = vec
+
+    # Load labels list
+    labels = [line.strip() for line in open(cfg.DATASET.LABEL_NAMES_PATH)]
+    embed_dim = next(iter(word_to_vec.values())).shape[0]
+
+    # Create labels matrix
+    label_words = set()
+    labels_matrix = np.empty((len(labels), embed_dim), dtype=np.float32)
+    for i, label in enumerate(labels):
+        words = list(map(lambda x: x.lower(), label.split(' ')))
+        embed_sum = np.zeros(embed_dim)
+        n_embed = 0
+        for word in words:
+            label_words.add(word)
+            if word not in ['something']:
+                n_embed += 1
+                vec = word_to_vec.get(word)
+                if vec is not None:
+                    embed_sum += vec
+        labels_matrix[i] = embed_sum / n_embed        
+
+    # Create concepts
+    concepts = []
+    for word in label_words:
+        vec = word_to_vec.get(word)
+        if vec is not None:
+            concepts.append(vec)
+    concepts = np.array(concepts, dtype=np.float32)
+
+    return labels_matrix, concepts
 
 
 def generateVarDpMask(shape, keepProb):

@@ -1,0 +1,32 @@
+GPU_ID: '0'
+WORKERS: 8
+CUDA: FALSE
+
+TRAIN:
+    FLAG: True
+    LEARNING_RATE: 0.0001
+    BATCH_SIZE: 64
+    VAL_BATCH_SIZE: 2
+    MAX_EPOCHS: 25
+    SNAPSHOT_INTERVAL: 5
+    WEIGHT_INIT: "xavier_uniform"
+    EALRY_STOPPING: True
+    PATIENCE: 5
+    CLIP_GRADS: True
+    MAX_STEPS: 4
+
+MODEL:
+    MODULE_DIM: 300
+
+DROPOUT:
+    STEM: 0.18
+
+DATASET:
+    DATA_TYPE: 'features'
+    FEATURES_PATH: 'data/feats.h5'
+    # VIDEOS_DIR: 'data/20bn-something-something-v2-frames'
+    # LABELS_JSON_PATH: 'data/something-something-v2-labels.json'
+    # TRAIN_JSON_PATH: 'data/something-something-v2-train.json'
+    # VAL_JSON_PATH: 'data/something-something-v2-validation.json'
+    GLOVE_PATH: 'data/glove.6B.300d.txt'
+    LABEL_NAMES_PATH: 'data/label_names.txt'

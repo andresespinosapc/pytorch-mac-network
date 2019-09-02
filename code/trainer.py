@@ -15,10 +15,12 @@ from torch.autograd import Variable
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from utils import mkdir_p, save_model, load_vocab
-from datasets import ClevrDataset, collate_fn
+from utils import mkdir_p, save_model, load_vocab, load_label_embeddings
+from datasets import S2SFeatureDataset, collate_fn
 import mac
 
+
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 class Logger(object):
     def __init__(self, logfile):
@@ -52,7 +54,7 @@ class Trainer():
             self.writer = SummaryWriter(log_dir=self.log_dir)
             sys.stdout = Logger(logfile=os.path.join(self.path, "logfile.log"))
 
-        self.data_dir = cfg.DATASET.DATA_DIR
+        self.features_path = cfg.DATASET.FEATURES_PATH
         self.max_epochs = cfg.TRAIN.MAX_EPOCHS
         self.snapshot_interval = cfg.TRAIN.SNAPSHOT_INTERVAL
 
@@ -63,21 +65,25 @@ class Trainer():
         self.batch_size = cfg.TRAIN.BATCH_SIZE
         self.lr = cfg.TRAIN.LEARNING_RATE
 
-        torch.cuda.set_device(self.gpus[0])
-        cudnn.benchmark = True
+        if cfg.CUDA:
+            torch.cuda.set_device(self.gpus[0])
+            cudnn.benchmark = True
 
         # load dataset
-        self.dataset = ClevrDataset(data_dir=self.data_dir, split="train")
+        self.dataset = S2SFeatureDataset(self.features_path, split='train')
         self.dataloader = DataLoader(dataset=self.dataset, batch_size=cfg.TRAIN.BATCH_SIZE, shuffle=True,
-                                       num_workers=cfg.WORKERS, drop_last=True, collate_fn=collate_fn)
+                                       num_workers=cfg.WORKERS, drop_last=False)
 
-        self.dataset_val = ClevrDataset(data_dir=self.data_dir, split="val")
-        self.dataloader_val = DataLoader(dataset=self.dataset_val, batch_size=200, drop_last=True,
-                                         shuffle=False, num_workers=cfg.WORKERS, collate_fn=collate_fn)
+        self.dataset_val = S2SFeatureDataset(self.features_path, split='val')
+        self.dataloader_val = DataLoader(dataset=self.dataset_val, batch_size=200, drop_last=False,
+                                         shuffle=False, num_workers=cfg.WORKERS)
 
         # load model
-        self.vocab = load_vocab(cfg)
-        self.model, self.model_ema = mac.load_MAC(cfg, self.vocab)
+        self.labels_matrix, self.concepts = load_label_embeddings(cfg)
+        # self.vocab = load_vocab(cfg)
+        # TEMP
+        self.vocab = { 'question_token_to_idx': [] }
+        self.model, self.model_ema = mac.load_MAC(cfg, self.vocab, self.labels_matrix, self.concepts)
         self.weight_moving_average(alpha=0)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
@@ -88,7 +94,7 @@ class Trainer():
         self.prior_epoch_loss = 10
 
         self.print_info()
-        self.loss_fn = torch.nn.CrossEntropyLoss().cuda()
+        self.loss_fn = torch.nn.CrossEntropyLoss().to(device)
 
     def print_info(self):
         print('Using config:')
@@ -142,31 +148,20 @@ class Trainer():
 
         dataset = tqdm(self.labeled_data)
 
-        for data in dataset:
+        for image, target in dataset:
             ######################################################
             # (1) Prepare training data
             ######################################################
-            image, question, question_len, answer = data['image'], data['question'], data['question_length'], data['answer']
-            answer = answer.long()
-            question = Variable(question)
-            answer = Variable(answer)
-
-            if cfg.CUDA:
-                image = image.cuda()
-                question = question.cuda()
-                answer = answer.cuda().squeeze()
-            else:
-                question = question
-                image = image
-                answer = answer.squeeze()
+            image = image.to(device)
+            target = target.long().to(device)
 
             ############################
             # (2) Train Model
             ############################
             self.optimizer.zero_grad()
 
-            scores = self.model(image, question, question_len)
-            loss = self.loss_fn(scores, answer)
+            scores = self.model(image)
+            loss = self.loss_fn(scores, target)
             loss.backward()
 
             if self.cfg.TRAIN.CLIP_GRADS:
@@ -178,8 +173,8 @@ class Trainer():
             ############################
             # (3) Log Progress
             ############################
-            correct = scores.detach().argmax(1) == answer
-            accuracy = correct.sum().cpu().numpy() / answer.shape[0]
+            correct = scores.detach().argmax(1) == target
+            accuracy = correct.sum().cpu().numpy() / target.shape[0]
 
             if avg_loss == 0:
                 avg_loss = loss.item()
@@ -244,7 +239,7 @@ class Trainer():
             eval_data = iter(self.dataloader_val)
             num_imgs = len(self.dataset_val)
 
-        batch_size = 200
+        batch_size = cfg.TRAIN.VAL_BATCH_SIZE
         total_iters = num_imgs // batch_size
         if max_samples is not None:
             max_iter = max_samples // batch_size
@@ -262,26 +257,20 @@ class Trainer():
             if max_iter is not None and _iteration == max_iter:
                 break
 
-            image, question, question_len, answer = data['image'], data['question'], data['question_length'], data['answer']
-            answer = answer.long()
-            question = Variable(question)
-            answer = Variable(answer)
-
-            if self.cfg.CUDA:
-                image = image.cuda()
-                question = question.cuda()
-                answer = answer.cuda().squeeze()
+            image, target = data
+            image = image.to(device)
+            target = target.long().to(device)
 
             with torch.no_grad():
-                scores = self.model(image, question, question_len)
-                scores_ema = self.model_ema(image, question, question_len)
+                scores = self.model(image)
+                scores_ema = self.model_ema(image)
 
-            correct_ema = scores_ema.detach().argmax(1) == answer
-            accuracy_ema = correct_ema.sum().cpu().numpy() / answer.shape[0]
+            correct_ema = scores_ema.detach().argmax(1) == target
+            accuracy_ema = correct_ema.sum().cpu().numpy() / target.shape[0]
             all_accuracies_ema.append(accuracy_ema)
 
-            correct = scores.detach().argmax(1) == answer
-            accuracy = correct.sum().cpu().numpy() / answer.shape[0]
+            correct = scores.detach().argmax(1) == target
+            accuracy = correct.sum().cpu().numpy() / target.shape[0]
             all_accuracies.append(accuracy)
 
         accuracy_ema = sum(all_accuracies_ema) / float(len(all_accuracies_ema))

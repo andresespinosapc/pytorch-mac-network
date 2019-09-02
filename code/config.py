@@ -18,6 +18,7 @@ __C.TRAIN = edict()
 __C.TRAIN.FLAG = True
 __C.TRAIN.LEARNING_RATE = 0.0001
 __C.TRAIN.BATCH_SIZE = 64
+__C.TRAIN.VAL_BATCH_SIZE = 200
 __C.TRAIN.MAX_EPOCHS = 25
 __C.TRAIN.SNAPSHOT_INTERVAL = 5
 __C.TRAIN.WEIGHT_INIT = "xavier_uniform"
@@ -29,9 +30,20 @@ __C.TRAIN.PATIENCE = 5
 __C.TRAIN.VAR_DROPOUT = False
 __C.TRAIN = dict(__C.TRAIN)
 
+__C.MODEL = edict()
+__C.MODEL.MODULE_DIM = 512
+__C.MODEL = dict(__C.MODEL)
+
+__C.DROPOUT = edict()
+__C.DROPOUT.STEM = 0.18
+__C.DROPOUT = dict(__C.DROPOUT)
+
 # Dataset options
 __C.DATASET = edict()
-__C.DATASET.DATA_DIR = ''
+__C.DATASET.DATA_TYPE = 'features'
+__C.DATASET.FEATURES_PATH = 'data/feats.h5'
+__C.DATASET.GLOVE_PATH = 'data/glove.840B.300d.txt'
+__C.DATASET.LABEL_NAMES_PATH = 'data/label_names.txt'
 __C.DATASET = dict(__C.DATASET)
 
 

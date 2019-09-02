@@ -6,9 +6,11 @@ from torch.autograd import Variable
 from utils import *
 
 
-def load_MAC(cfg, vocab):
+def load_MAC(cfg, vocab, labels_matrix, concepts):
     kwargs = {'vocab': vocab,
-              'max_step': cfg.TRAIN.MAX_STEPS
+              'max_step': cfg.TRAIN.MAX_STEPS,
+              'labels_matrix': labels_matrix,
+              'concepts': concepts,
               }
 
     model = MACNetwork(cfg, **kwargs)
@@ -31,7 +33,7 @@ class ControlUnit(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.attn = nn.Linear(module_dim, 1)
-        self.control_input = nn.Sequential(nn.Linear(module_dim, module_dim),
+        self.control_input = nn.Sequential(nn.Linear(2 * module_dim, module_dim),
                                            nn.Tanh())
 
         self.control_input_u = nn.ModuleList()
@@ -48,7 +50,7 @@ class ControlUnit(nn.Module):
         mask = (ones - mask) * (1e-30)
         return mask
 
-    def forward(self, question, context, question_lengths, step):
+    def forward(self, prev_control, prev_memory, context, step):
         """
         Args:
             question: external inputs to control unit (the question vector).
@@ -61,6 +63,7 @@ class ControlUnit(nn.Module):
             step: which step in the reasoning chain
         """
         # compute interactions with question words
+        question = torch.cat([prev_control, prev_memory], dim=1)
         question = self.control_input(question)
         question = self.control_input_u[step](question)
 
@@ -163,21 +166,23 @@ class WriteUnit(nn.Module):
 
 
 class MACUnit(nn.Module):
-    def __init__(self, cfg, module_dim=512, max_step=4):
+    def __init__(self, cfg, max_step=4):
         super().__init__()
         self.cfg = cfg
+        module_dim = cfg.MODEL.MODULE_DIM
         self.control = ControlUnit(cfg, module_dim, max_step)
         self.read = ReadUnit(module_dim)
         self.write = WriteUnit(cfg, module_dim)
 
         self.initial_memory = nn.Parameter(torch.zeros(1, module_dim))
+        self.initial_control = nn.Parameter(torch.zeros(1, module_dim))
 
         self.module_dim = module_dim
         self.max_step = max_step
 
-    def zero_state(self, batch_size, question):
+    def zero_state(self, batch_size):
         initial_memory = self.initial_memory.expand(batch_size, self.module_dim)
-        initial_control = question
+        initial_control = self.initial_control.expand(batch_size, self.module_dim)
 
         if self.cfg.TRAIN.VAR_DROPOUT:
             memDpMask = generateVarDpMask((batch_size, self.module_dim), 0.85)
@@ -186,13 +191,13 @@ class MACUnit(nn.Module):
 
         return initial_control, initial_memory, memDpMask
 
-    def forward(self, context, question, knowledge, question_lengths):
-        batch_size = question.size(0)
-        control, memory, memDpMask = self.zero_state(batch_size, question)
+    def forward(self, context, knowledge):
+        batch_size = context.size(0)
+        control, memory, memDpMask = self.zero_state(batch_size)
 
         for i in range(self.max_step):
             # control unit
-            control = self.control(question, context, question_lengths, i)
+            control = self.control(control, memory, context, i)
             # read unit
             info = self.read(memory, knowledge, control, memDpMask)
             # write unit
@@ -202,29 +207,26 @@ class MACUnit(nn.Module):
 
 
 class InputUnit(nn.Module):
-    def __init__(self, cfg, vocab_size, wordvec_dim=300, rnn_dim=512, module_dim=512, bidirectional=True):
+    def __init__(self, cfg, vocab_size, wordvec_dim=300, rnn_dim=512, bidirectional=True):
         super(InputUnit, self).__init__()
 
+        module_dim = cfg.MODEL.MODULE_DIM
         self.dim = module_dim
         self.cfg = cfg
 
-        self.stem = nn.Sequential(nn.Dropout(p=0.18),
-                                  nn.Conv2d(1024, module_dim, 3, 1, 1),
-                                  nn.ELU(),
-                                  nn.Dropout(p=0.18),
-                                  nn.Conv2d(module_dim, module_dim, kernel_size=3, stride=1, padding=1),
-                                  nn.ELU())
+        self.stem = nn.Sequential(
+            nn.Dropout(p=cfg.DROPOUT.STEM),
+            nn.Conv3d(256, module_dim, 3, 1, 1),
+            nn.ELU(),
+            nn.Dropout(p=cfg.DROPOUT.STEM),
+            nn.Conv3d(module_dim, module_dim, 3, 1, 1),
+            nn.ELU(),
+        )
 
-        self.bidirectional = bidirectional
-        if bidirectional:
-            rnn_dim = rnn_dim // 2
+        # self.encoder_embed = nn.Embedding(vocab_size, wordvec_dim)
+        # self.embedding_dropout = nn.Dropout(p=0.15)
 
-        self.encoder_embed = nn.Embedding(vocab_size, wordvec_dim)
-        self.encoder = nn.LSTM(wordvec_dim, rnn_dim, batch_first=True, bidirectional=bidirectional)
-        self.embedding_dropout = nn.Dropout(p=0.15)
-        self.question_dropout = nn.Dropout(p=0.08)
-
-    def forward(self, image, question, question_len):
+    def forward(self, image, question):
         b_size = question.size(0)
 
         # get image features
@@ -233,43 +235,44 @@ class InputUnit(nn.Module):
         img = img.permute(0,2,1)
 
         # get question and contextual word embeddings
-        embed = self.encoder_embed(question)
-        embed = self.embedding_dropout(embed)
-        embed = nn.utils.rnn.pack_padded_sequence(embed, question_len, batch_first=True)
+        # embed = self.encoder_embed(question)
+        # embed = self.embedding_dropout(embed)
+        contextual_words = question
 
-        contextual_words, (question_embedding, _) = self.encoder(embed)
-        if self.bidirectional:
-            question_embedding = torch.cat([question_embedding[0], question_embedding[1]], -1)
-        question_embedding = self.question_dropout(question_embedding)
-
-        contextual_words, _ = nn.utils.rnn.pad_packed_sequence(contextual_words, batch_first=True)
-
-        return question_embedding, contextual_words, img
+        return contextual_words, img
 
 
 class OutputUnit(nn.Module):
-    def __init__(self, module_dim=512, num_answers=28):
+    def __init__(self, labels_matrix, wordvec_dim=300, num_answers=28):
         super(OutputUnit, self).__init__()
 
-        self.question_proj = nn.Linear(module_dim, module_dim)
+        module_dim = cfg.MODEL.MODULE_DIM
+        self.memory_proj = nn.Linear(module_dim, wordvec_dim)
 
-        self.classifier = nn.Sequential(nn.Dropout(0.15),
-                                        nn.Linear(module_dim * 2, module_dim),
-                                        nn.ELU(),
-                                        nn.Dropout(0.15),
-                                        nn.Linear(module_dim, num_answers))
+        # self.classifier = nn.Sequential(nn.Dropout(0.15),
+        #                                 nn.Linear(module_dim * 2, module_dim),
+        #                                 nn.ELU(),
+        #                                 nn.Dropout(0.15),
+        #                                 nn.Linear(module_dim, num_answers))
 
-    def forward(self, question_embedding, memory):
+        self.labels_matrix = labels_matrix
+        self.attn = nn.Linear(module_dim, 1)
+
+    def forward(self, memory):
         # apply classifier to output of MacCell and the question
-        question_embedding = self.question_proj(question_embedding)
-        out = torch.cat([memory, question_embedding], 1)
-        out = self.classifier(out)
+        memory = self.memory_proj(memory).unsqueeze(1)
+        # out = self.classifier(out)
+        
+        labels_matrix = self.labels_matrix.unsqueeze(0).expand(memory.size(0), -1, -1)
+        interactions = memory * labels_matrix
+        logits = self.attn(interactions)
+        out = F.softmax(logits, 1).squeeze(2)
 
         return out
 
 
 class MACNetwork(nn.Module):
-    def __init__(self, cfg, max_step, vocab):
+    def __init__(self, cfg, max_step, vocab, labels_matrix, concepts):
         super().__init__()
 
         self.cfg = cfg
@@ -277,22 +280,64 @@ class MACNetwork(nn.Module):
 
         self.input_unit = InputUnit(cfg, vocab_size=encoder_vocab_size)
 
-        self.output_unit = OutputUnit()
+        self.output_unit = OutputUnit(torch.tensor(labels_matrix))
 
         self.mac = MACUnit(cfg, max_step=max_step)
 
         init_modules(self.modules(), w_init=self.cfg.TRAIN.WEIGHT_INIT)
-        nn.init.uniform_(self.input_unit.encoder_embed.weight, -1.0, 1.0)
+        # nn.init.uniform_(self.input_unit.encoder_embed.weight, -1.0, 1.0)
         nn.init.normal_(self.mac.initial_memory)
+        nn.init.normal_(self.mac.initial_control)
 
-    def forward(self, image, question, question_len):
+        self.concepts = torch.tensor(concepts).unsqueeze(0)
+
+    def forward(self, image):
         # get image, word, and sentence embeddings
-        question_embedding, contextual_words, img = self.input_unit(image, question, question_len)
+        contextual_words, img = self.input_unit(image, self.concepts.expand(image.size(0), -1, -1))
 
         # apply MacCell
-        memory = self.mac(contextual_words, question_embedding, img, question_len)
+        memory = self.mac(contextual_words, img)
 
         # get classification
-        out = self.output_unit(question_embedding, memory)
+        out = self.output_unit(memory)
 
         return out
+
+if __name__ == '__main__':
+    from types import SimpleNamespace
+
+    def dump_to_namespace(ns, d):
+        for k, v in d.items():
+            if isinstance(v, dict):
+                leaf_ns = SimpleNamespace()
+                ns.__dict__[k] = leaf_ns
+                dump_to_namespace(leaf_ns, v)
+            else:
+                ns.__dict__[k] = v
+
+    cfg_dict = {
+        'TRAIN': {
+            'VAR_DROPOUT': False,
+            'WEIGHT_INIT': 'xavier_uniform',
+            'MAX_STEPS': 4,
+        },
+        'MODEL': {
+            'MODULE_DIM': 300,
+        },
+        'DROPOUT': {
+            'STEM': 0.18,
+        }
+    }
+
+    cfg = SimpleNamespace()
+    dump_to_namespace(cfg, cfg_dict)
+
+    vocab = { 'question_token_to_idx': [] }
+    labels_matrix = torch.empty([10, 300])
+    concepts = torch.empty([20, 300])
+    model = MACNetwork(cfg, 5, vocab, labels_matrix, concepts)
+
+    image = torch.empty([2, 256, 72, 11, 11])
+    target = torch.empty([2])
+    scores = model(image)
+    print(scores.shape)
