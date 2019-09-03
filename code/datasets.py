@@ -37,7 +37,6 @@ class S2SFeatureDataset(data.Dataset):
         with h5py.File(self.path_features, 'r') as f:
             data = f[self.split]
             self.unique_target = list(np.unique(data['target']))
-        print('unique_target:', self.unique_target)
 
     def __getitem__(self, index):
         """

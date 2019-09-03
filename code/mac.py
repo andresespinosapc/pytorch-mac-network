@@ -8,12 +8,14 @@ from utils import *
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-def load_MAC(cfg, vocab, labels_matrix, concepts):
-    kwargs = {'vocab': vocab,
-              'max_step': cfg.TRAIN.MAX_STEPS,
-              'labels_matrix': labels_matrix,
-              'concepts': concepts,
-              }
+def load_MAC(cfg, vocab, labels_matrix, concepts, kb_shape=(72, 11, 11)):
+    kwargs = {
+        'vocab': vocab,
+        'max_step': cfg.TRAIN.MAX_STEPS,
+        'labels_matrix': labels_matrix,
+        'concepts': concepts,
+        'kb_shape': kb_shape,
+    }
 
     model = MACNetwork(cfg, **kwargs)
     model_ema = MACNetwork(cfg, **kwargs)
@@ -81,7 +83,7 @@ class ControlUnit(nn.Module):
         # apply soft attention to current context words
         next_control = (attn * context).sum(1)
 
-        return next_control
+        return next_control, attn
 
 
 class ReadUnit(nn.Module):
@@ -147,7 +149,7 @@ class ReadUnit(nn.Module):
         attn = attn.unsqueeze(-1)
         read = (attn * know).sum(1)
 
-        return read
+        return read, attn
 
 
 class WriteUnit(nn.Module):
@@ -164,7 +166,7 @@ class WriteUnit(nn.Module):
 
 
 class MACUnit(nn.Module):
-    def __init__(self, cfg, max_step=4):
+    def __init__(self, cfg, max_step=4, concepts_size=None, kb_shape=None):
         super().__init__()
         self.cfg = cfg
         module_dim = cfg.MODEL.MODULE_DIM
@@ -178,6 +180,14 @@ class MACUnit(nn.Module):
         self.module_dim = module_dim
         self.max_step = max_step
 
+        if concepts_size is not None:
+            self.save_attns = True
+        else:
+            self.save_attns = False
+        self.kb_shape = kb_shape
+        self.concept_attns = []
+        self.kb_attns = []
+
     def zero_state(self, batch_size):
         initial_memory = self.initial_memory.expand(batch_size, self.module_dim)
         initial_control = self.initial_control.expand(batch_size, self.module_dim)
@@ -190,14 +200,23 @@ class MACUnit(nn.Module):
         return initial_control, initial_memory, memDpMask
 
     def forward(self, context, knowledge):
+        if self.save_attns:
+            self.concept_attns = []
+            self.kb_attns = []
+
         batch_size = context.size(0)
         control, memory, memDpMask = self.zero_state(batch_size)
 
         for i in range(self.max_step):
             # control unit
-            control = self.control(control, memory, context, i)
+            control, attn = self.control(control, memory, context, i)
+            if self.save_attns:
+                self.concept_attns.append(attn.squeeze(2).detach().cpu().numpy())
             # read unit
-            info = self.read(memory, knowledge, control, memDpMask)
+            info, attn = self.read(memory, knowledge, control, memDpMask)
+            if self.save_attns:
+                attn = attn.view((batch_size, *self.kb_shape))
+                self.kb_attns.append(attn.detach().cpu().numpy())
             # write unit
             memory = self.write(memory, info)
 
@@ -270,7 +289,7 @@ class OutputUnit(nn.Module):
 
 
 class MACNetwork(nn.Module):
-    def __init__(self, cfg, max_step, vocab, labels_matrix, concepts):
+    def __init__(self, cfg, max_step, vocab, labels_matrix, concepts, kb_shape=(0, 0, 0)):
         super().__init__()
 
         self.cfg = cfg
@@ -281,7 +300,7 @@ class MACNetwork(nn.Module):
         self.labels_matrix = nn.Parameter(torch.tensor(labels_matrix), requires_grad=False)
         self.output_unit = OutputUnit(self.labels_matrix)
 
-        self.mac = MACUnit(cfg, max_step=max_step)
+        self.mac = MACUnit(cfg, max_step=max_step, concepts_size=concepts.shape[0], kb_shape=kb_shape)
 
         init_modules(self.modules(), w_init=self.cfg.TRAIN.WEIGHT_INIT)
         # nn.init.uniform_(self.input_unit.encoder_embed.weight, -1.0, 1.0)
@@ -289,6 +308,16 @@ class MACNetwork(nn.Module):
         nn.init.normal_(self.mac.initial_control)
 
         self.concepts = nn.Parameter(torch.tensor(concepts), requires_grad=False)
+
+    def get_attentions(self):
+        if len(self.mac.concept_attns) == 0:
+            raise ValueError('You must do a forward pass before getting the attentions')
+
+        if type(self.mac.concept_attns) is list:
+            self.mac.concept_attns = np.moveaxis(np.array(self.mac.concept_attns), 0, 1)
+            self.mac.kb_attns = np.moveaxis(np.array(self.mac.kb_attns), 0, 1)
+
+        return self.mac.concept_attns, self.mac.kb_attns
 
     def forward(self, image):
         # get image, word, and sentence embeddings
@@ -335,9 +364,12 @@ if __name__ == '__main__':
     vocab = { 'question_token_to_idx': [] }
     labels_matrix = torch.empty([10, 300])
     concepts = torch.empty([20, 300])
-    model = MACNetwork(cfg, 5, vocab, labels_matrix, concepts).to(device)
+    model = MACNetwork(cfg, 5, vocab, labels_matrix, concepts, kb_shape=(72, 11, 11)).to(device)
 
     image = torch.empty([2, 256, 72, 11, 11]).to(device)
     target = torch.empty([2]).to(device)
     scores = model(image)
-    print(scores.shape)
+    print('Scores shape:', scores.shape)
+    concept_attns, kb_attns = model.get_attentions()
+    print('Concept attentions shape:', concept_attns.shape)
+    print('KB attentions shape:', kb_attns.shape)
