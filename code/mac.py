@@ -6,6 +6,8 @@ from torch.autograd import Variable
 from utils import *
 
 
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
 def load_MAC(cfg, vocab, labels_matrix, concepts):
     kwargs = {'vocab': vocab,
               'max_step': cfg.TRAIN.MAX_STEPS,
@@ -18,12 +20,8 @@ def load_MAC(cfg, vocab, labels_matrix, concepts):
     for param in model_ema.parameters():
         param.requires_grad = False
 
-    if torch.cuda.is_available():
-        model.cuda()
-        model_ema.cuda()
-    else:
-        model.cpu()
-        model_ema.cpu()
+    model.to(device)
+    model_ema.to(device)
     model.train()
     return model, model_ema
 
@@ -280,7 +278,8 @@ class MACNetwork(nn.Module):
 
         self.input_unit = InputUnit(cfg, vocab_size=encoder_vocab_size)
 
-        self.output_unit = OutputUnit(torch.tensor(labels_matrix))
+        self.labels_matrix = nn.Parameter(torch.tensor(labels_matrix), requires_grad=False)
+        self.output_unit = OutputUnit(self.labels_matrix)
 
         self.mac = MACUnit(cfg, max_step=max_step)
 
@@ -289,11 +288,12 @@ class MACNetwork(nn.Module):
         nn.init.normal_(self.mac.initial_memory)
         nn.init.normal_(self.mac.initial_control)
 
-        self.concepts = torch.tensor(concepts).unsqueeze(0)
+        self.concepts = nn.Parameter(torch.tensor(concepts), requires_grad=False)
 
     def forward(self, image):
         # get image, word, and sentence embeddings
-        contextual_words, img = self.input_unit(image, self.concepts.expand(image.size(0), -1, -1))
+        concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1, -1)
+        contextual_words, img = self.input_unit(image, concepts)
 
         # apply MacCell
         memory = self.mac(contextual_words, img)
@@ -335,9 +335,9 @@ if __name__ == '__main__':
     vocab = { 'question_token_to_idx': [] }
     labels_matrix = torch.empty([10, 300])
     concepts = torch.empty([20, 300])
-    model = MACNetwork(cfg, 5, vocab, labels_matrix, concepts)
+    model = MACNetwork(cfg, 5, vocab, labels_matrix, concepts).to(device)
 
-    image = torch.empty([2, 256, 72, 11, 11])
-    target = torch.empty([2])
+    image = torch.empty([2, 256, 72, 11, 11]).to(device)
+    target = torch.empty([2]).to(device)
     scores = model(image)
     print(scores.shape)

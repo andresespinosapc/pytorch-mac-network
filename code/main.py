@@ -1,4 +1,7 @@
 from __future__ import print_function
+
+import comet_ml
+
 import torch
 
 import argparse

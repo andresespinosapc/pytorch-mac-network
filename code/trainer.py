@@ -1,11 +1,14 @@
 from __future__ import print_function
 
+from comet_ml import Experiment
+
 import sys
 import os
 import shutil
 from six.moves import range
 import pprint
 from tqdm import tqdm
+from easydict import EasyDict as edict
 
 from tensorboardX import SummaryWriter
 import torch.backends.cudnn as cudnn
@@ -13,12 +16,14 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 from utils import mkdir_p, save_model, load_vocab, load_label_embeddings
 from datasets import S2SFeatureDataset, collate_fn
 import mac
 
+
+experiment = Experiment(project_name='mac-actions', workspace='andresespinosapc')
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -39,9 +44,18 @@ class Logger(object):
         #you might want to specify some extra behavior here.
         pass
 
+def log_comet_parameters(cfg):
+    for key in cfg.keys():
+        if type(cfg[key]) is not edict:
+            experiment.log_parameter(key, cfg[key])
+        else:
+            for key2 in cfg[key].keys():
+                experiment.log_parameter('{}_{}'.format(key, key2), cfg[key][key2])
+
 
 class Trainer():
     def __init__(self, log_dir, cfg):
+        log_comet_parameters(cfg)
 
         self.path = log_dir
         self.cfg = cfg
@@ -63,6 +77,7 @@ class Trainer():
         self.num_gpus = len(self.gpus)
 
         self.batch_size = cfg.TRAIN.BATCH_SIZE
+        self.val_batch_size = self.cfg.TRAIN.VAL_BATCH_SIZE
         self.lr = cfg.TRAIN.LEARNING_RATE
 
         if cfg.CUDA:
@@ -71,11 +86,13 @@ class Trainer():
 
         # load dataset
         self.dataset = S2SFeatureDataset(self.features_path, split='train')
-        self.dataloader = DataLoader(dataset=self.dataset, batch_size=cfg.TRAIN.BATCH_SIZE, shuffle=True,
+        # self.dataset = Subset(self.dataset, range(5))
+        self.dataloader = DataLoader(dataset=self.dataset, batch_size=self.batch_size, shuffle=True,
                                        num_workers=cfg.WORKERS, drop_last=False)
 
         self.dataset_val = S2SFeatureDataset(self.features_path, split='val')
-        self.dataloader_val = DataLoader(dataset=self.dataset_val, batch_size=200, drop_last=False,
+        # self.dataset_val = Subset(self.dataset_val, range(5))
+        self.dataloader_val = DataLoader(dataset=self.dataset_val, batch_size=self.val_batch_size, drop_last=False,
                                          shuffle=False, num_workers=cfg.WORKERS)
 
         # load model
@@ -86,6 +103,9 @@ class Trainer():
         self.model, self.model_ema = mac.load_MAC(cfg, self.vocab, self.labels_matrix, self.concepts)
         self.weight_moving_average(alpha=0)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode='min', factor=.1, patience=5,
+        )
 
         self.previous_best_acc = 0.0
         self.previous_best_epoch = 0
@@ -175,6 +195,11 @@ class Trainer():
             ############################
             correct = scores.detach().argmax(1) == target
             accuracy = correct.sum().cpu().numpy() / target.shape[0]
+            metrics = {
+                'loss': loss.item(),
+                'accuracy': accuracy,
+            }
+            experiment.log_metrics(metrics)
 
             if avg_loss == 0:
                 avg_loss = loss.item()
@@ -188,19 +213,27 @@ class Trainer():
                 'Epoch: {}; Avg Loss: {:.5f}; Avg Train Acc: {:.5f}'.format(epoch + 1, avg_loss, train_accuracy)
             )
 
+        metrics = {
+            'avg_loss': avg_loss,
+            'epoch': epoch,
+        }
+        experiment.log_metrics(metrics)
         dict = {
             "avg_loss": avg_loss,
             "train_accuracy": train_accuracy
         }
+
         return dict
 
     def train(self):
         cfg = self.cfg
         print("Start Training")
         for epoch in range(self.max_epochs):
-            dict = self.train_epoch(epoch)
-            self.reduce_lr()
-            self.log_results(epoch, dict)
+            with experiment.train():
+                dict = self.train_epoch(epoch)
+            self.scheduler.step(dict['avg_loss'])
+            with experiment.validate():
+                self.log_results(epoch, dict)
             if cfg.TRAIN.EALRY_STOPPING:
                 if epoch - cfg.TRAIN.PATIENCE == self.previous_best_epoch:
                     break
@@ -239,7 +272,7 @@ class Trainer():
             eval_data = iter(self.dataloader_val)
             num_imgs = len(self.dataset_val)
 
-        batch_size = cfg.TRAIN.VAL_BATCH_SIZE
+        batch_size = self.val_batch_size
         total_iters = num_imgs // batch_size
         if max_samples is not None:
             max_iter = max_samples // batch_size
@@ -275,5 +308,6 @@ class Trainer():
 
         accuracy_ema = sum(all_accuracies_ema) / float(len(all_accuracies_ema))
         accuracy = sum(all_accuracies) / float(len(all_accuracies))
+        experiment.log_metric('accuracy', accuracy)
 
         return accuracy, accuracy_ema
