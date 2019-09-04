@@ -18,7 +18,7 @@ from torch.autograd import Variable
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
 
-from utils import mkdir_p, save_model, load_vocab, load_label_embeddings
+from utils import mkdir_p, save_model, load_model, load_vocab, load_label_embeddings
 from datasets import S2SFeatureDataset, collate_fn
 import mac
 
@@ -103,9 +103,12 @@ class Trainer():
         self.model, self.model_ema = mac.load_MAC(cfg, self.vocab, self.labels_matrix, self.concepts)
         self.weight_moving_average(alpha=0)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode='min', factor=.1, patience=5,
-        )
+        # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        #     self.optimizer, mode='min', factor=.1, patience=5,
+        # )
+        if cfg.TRAIN.RESUME_SNAPSHOT_DIR != '':
+            model_dir = os.path.join('data', cfg.TRAIN.RESUME_SNAPSHOT_DIR, 'Model')
+            self.load_models(model_dir, cfg.TRAIN.RESUME_SNAPSHOT_ITER)
 
         self.previous_best_acc = 0.0
         self.previous_best_epoch = 0
@@ -157,6 +160,10 @@ class Trainer():
     def save_models(self, iteration):
         save_model(self.model, self.optimizer, iteration, self.model_dir, model_name="model")
         save_model(self.model_ema, None, iteration, self.model_dir, model_name="model_ema")
+
+    def load_models(self, model_dir, iteration):
+        load_model(self.model, self.optimizer, iteration, model_dir, model_name='model')
+        load_model(self.model_ema, None, iteration, model_dir, model_name='model_ema')
 
     def train_epoch(self, epoch):
         cfg = self.cfg
@@ -231,7 +238,7 @@ class Trainer():
         for epoch in range(self.max_epochs):
             with experiment.train():
                 dict = self.train_epoch(epoch)
-            self.scheduler.step(dict['avg_loss'])
+            # self.scheduler.step(dict['avg_loss'])
             with experiment.validate():
                 self.log_results(epoch, dict)
             if cfg.TRAIN.EALRY_STOPPING:

@@ -32,6 +32,16 @@ def save_model(model, optim, iter, model_dir, max_to_keep=None, model_name=""):
             os.remove(checkpoint_list[0])
             checkpoint_list = checkpoint_list[1:]
 
+def load_model(model, optim, iter, model_dir, model_name=''):
+    if model_name == "":
+        checkpoint = torch.load("{}/checkpoint_{:06}.pth".format(model_dir, iter))
+    else:
+        checkpoint = torch.load("{}/{}_checkpoint_{:06}.pth".format(model_dir, model_name, iter))
+
+    model.load_state_dict(checkpoint['model'])
+    if optim:
+        optim.load_state_dict(checkpoint['optim'])
+
 
 def mkdir_p(path):
     try:
