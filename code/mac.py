@@ -282,8 +282,7 @@ class OutputUnit(nn.Module):
         
         labels_matrix = self.labels_matrix.unsqueeze(0).expand(memory.size(0), -1, -1)
         interactions = memory * labels_matrix
-        logits = self.attn(interactions)
-        out = F.softmax(logits, 1).squeeze(2)
+        out = self.attn(interactions).squeeze(2)
 
         return out
 
