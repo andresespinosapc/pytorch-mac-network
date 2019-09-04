@@ -46,6 +46,7 @@ __C.DATASET.DATA_TYPE = 'features'
 __C.DATASET.FEATURES_PATH = 'data/feats.h5'
 __C.DATASET.GLOVE_PATH = 'data/glove.840B.300d.txt'
 __C.DATASET.LABEL_NAMES_PATH = 'data/label_names.txt'
+__C.DATASET.LABELS_CONCEPTS_PATH = 'data/labels_concepts.h5'
 __C.DATASET = dict(__C.DATASET)
 
 

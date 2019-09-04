@@ -30,5 +30,6 @@ DATASET:
     # LABELS_JSON_PATH: 'data/something-something-v2-labels.json'
     # TRAIN_JSON_PATH: 'data/something-something-v2-train.json'
     # VAL_JSON_PATH: 'data/something-something-v2-validation.json'
+    LABELS_CONCEPTS_PATH: 'data/labels_and_concepts.h5'
     GLOVE_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/glove.840B.300d.txt'
     LABEL_NAMES_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/label_names_10percent.txt'

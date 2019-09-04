@@ -9,6 +9,7 @@ from six.moves import range
 import pprint
 from tqdm import tqdm
 from easydict import EasyDict as edict
+import h5py
 
 from tensorboardX import SummaryWriter
 import torch.backends.cudnn as cudnn
@@ -96,7 +97,9 @@ class Trainer():
                                          shuffle=False, num_workers=cfg.WORKERS)
 
         # load model
-        self.labels_matrix, self.concepts = load_label_embeddings(cfg)
+        with h5py.File(cfg.DATASET.LABELS_CONCEPTS_PATH) as h5f:
+            self.labels_matrix = h5f['labels_matrix'][:]
+            self.concepts = h5f['concepts'][:]
         # self.vocab = load_vocab(cfg)
         # TEMP
         self.vocab = { 'question_token_to_idx': [] }

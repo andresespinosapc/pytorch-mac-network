@@ -2,10 +2,22 @@ import os
 import sys
 import json
 import pickle
+import h5py
+import argparse
 
 import nltk
 import tqdm
 from PIL import Image
+
+from config import cfg, cfg_from_file
+from utils import load_label_embeddings
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--cfg', dest='cfg_file', help='optional config file', default='shapes_train.yml', type=str)
+    args = parser.parse_args()
+    return args
 
 def process_question(root, split, word_dic=None, answer_dic=None):
     if word_dic is None:
@@ -52,10 +64,19 @@ def process_question(root, split, word_dic=None, answer_dic=None):
     return word_dic, answer_dic
 
 if __name__ == '__main__':
-    root = sys.argv[1]
+    # root = sys.argv[1]
 
-    word_dic, answer_dic = process_question(root, 'train')
-    process_question(root, 'val', word_dic, answer_dic)
+    # word_dic, answer_dic = process_question(root, 'train')
+    # process_question(root, 'val', word_dic, answer_dic)
 
-    with open('../data/dic.pkl', 'wb') as f:
-        pickle.dump({'word_dic': word_dic, 'answer_dic': answer_dic}, f)
+    # with open('../data/dic.pkl', 'wb') as f:
+    #     pickle.dump({'word_dic': word_dic, 'answer_dic': answer_dic}, f)
+
+    args = parse_args()
+    if args.cfg_file is not None:
+        cfg_from_file(args.cfg_file)
+
+    labels_matrix, concepts = load_label_embeddings(cfg)
+    with h5py.File(cfg.DATASET.LABELS_CONCEPTS_PATH, 'w') as h5f:
+        h5f.create_dataset('labels_matrix', data=labels_matrix)
+        h5f.create_dataset('concepts', data=concepts)
