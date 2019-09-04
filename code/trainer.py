@@ -160,9 +160,12 @@ class Trainer():
         self.prior_epoch_loss = epoch_loss
         self.total_epoch_loss = 0
 
-    def save_models(self, iteration):
-        save_model(self.model, self.optimizer, iteration, self.model_dir, model_name="model")
-        save_model(self.model_ema, None, iteration, self.model_dir, model_name="model_ema")
+    def save_models(self, iteration, is_best=False):
+        prefix = ""
+        if is_best:
+            prefix = "best_"
+        save_model(self.model, self.optimizer, iteration, self.model_dir, model_name=prefix+"model")
+        save_model(self.model_ema, None, iteration, self.model_dir, model_name=prefix+"model_ema")
 
     def load_models(self, model_dir, iteration):
         load_model(self.model, self.optimizer, iteration, model_dir, model_name='model')
@@ -268,6 +271,7 @@ class Trainer():
         if val_accuracy > self.previous_best_acc:
             self.previous_best_acc = val_accuracy
             self.previous_best_epoch = epoch
+            self.save_models(epoch, is_best=True)
 
         if epoch % self.snapshot_interval == 0:
             self.save_models(epoch)
