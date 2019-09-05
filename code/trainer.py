@@ -19,7 +19,8 @@ from torch.autograd import Variable
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
 
-from utils import mkdir_p, save_model, load_model, load_vocab, load_label_embeddings
+from utils import mkdir_p, save_model, \
+    load_model, load_vocab, load_label_embeddings, get_labels_concepts_filename
 from datasets import S2SFeatureDataset, collate_fn
 import mac
 
@@ -97,7 +98,7 @@ class Trainer():
                                          shuffle=False, num_workers=cfg.WORKERS)
 
         # load model
-        with h5py.File(cfg.DATASET.LABELS_CONCEPTS_PATH) as h5f:
+        with h5py.File(get_labels_concepts_filename(cfg)) as h5f:
             self.labels_matrix = h5f['labels_matrix'][:]
             self.concepts = h5f['concepts'][:]
         # self.vocab = load_vocab(cfg)
@@ -106,9 +107,9 @@ class Trainer():
         self.model, self.model_ema = mac.load_MAC(cfg, self.vocab, self.labels_matrix, self.concepts)
         self.weight_moving_average(alpha=0)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
-        # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        #     self.optimizer, mode='min', factor=.1, patience=5,
-        # )
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode='min', factor=.1, patience=5,
+        )
         if cfg.TRAIN.RESUME_SNAPSHOT_DIR != '':
             model_dir = os.path.join('data', cfg.TRAIN.RESUME_SNAPSHOT_DIR, 'Model')
             self.load_models(model_dir, cfg.TRAIN.RESUME_SNAPSHOT_ITER)
@@ -293,6 +294,7 @@ class Trainer():
         else:
             max_iter = None
 
+        all_losses = []
         all_accuracies = []
         all_accuracies_ema = []
 
@@ -310,6 +312,8 @@ class Trainer():
 
             with torch.no_grad():
                 scores = self.model(image)
+                loss = self.loss_fn(scores, target)
+                all_losses.append(loss.item())
                 scores_ema = self.model_ema(image)
 
             correct_ema = scores_ema.detach().argmax(1) == target
@@ -320,6 +324,8 @@ class Trainer():
             accuracy = correct.sum().cpu().numpy() / target.shape[0]
             all_accuracies.append(accuracy)
 
+        avg_loss = sum(all_losses) / float(len(all_losses))
+        self.scheduler.step(avg_loss)
         accuracy_ema = sum(all_accuracies_ema) / float(len(all_accuracies_ema))
         accuracy = sum(all_accuracies) / float(len(all_accuracies))
         experiment.log_metric('accuracy', accuracy)

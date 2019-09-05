@@ -10,7 +10,7 @@ import tqdm
 from PIL import Image
 
 from config import cfg, cfg_from_file
-from utils import load_label_embeddings
+from utils import load_label_embeddings, get_labels_concepts_filename
 
 
 def parse_args():
@@ -76,7 +76,10 @@ if __name__ == '__main__':
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
 
-    labels_matrix, concepts = load_label_embeddings(cfg)
-    with h5py.File(cfg.DATASET.LABELS_CONCEPTS_PATH, 'w') as h5f:
+    labels_matrix, concepts, concept_words = load_label_embeddings(cfg, get_concept_words=True)
+    print('Concept words:\n')
+    for word in concept_words:
+        print(word)
+    with h5py.File(get_labels_concepts_filename(cfg), 'w') as h5f:
         h5f.create_dataset('labels_matrix', data=labels_matrix)
         h5f.create_dataset('concepts', data=concepts)

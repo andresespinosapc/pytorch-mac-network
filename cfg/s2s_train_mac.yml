@@ -2,6 +2,13 @@ GPU_ID: '0'
 WORKERS: 1
 CUDA: TRUE
 
+PREPROCESS:
+    GLOVE_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/glove.840B.300d.txt'
+    LABEL_NAMES_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/label_names_10percent.txt'
+    WORD_TOKENIZE: False
+    REMOVE_STOPWORDS: False
+    LEMMATIZE: False
+
 TRAIN:
     FLAG: True
     LEARNING_RATE: 0.0001
@@ -12,7 +19,7 @@ TRAIN:
     RESUME_SNAPSHOT_DIR: ""
     RESUME_SNAPSHOT_ITER: 5
     WEIGHT_INIT: "xavier_uniform"
-    EALRY_STOPPING: True
+    EALRY_STOPPING: False
     PATIENCE: 5
     CLIP_GRADS: True
     MAX_STEPS: 4
@@ -25,11 +32,9 @@ DROPOUT:
 
 DATASET:
     DATA_TYPE: 'features'
-    FEATURES_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/s2s_feats_10percent.h5'
+    FEATURES_PATH: '/vault/araymond/CAN/s2s_feats_10percent_final.h5'
     # VIDEOS_DIR: 'data/20bn-something-something-v2-frames'
     # LABELS_JSON_PATH: 'data/something-something-v2-labels.json'
     # TRAIN_JSON_PATH: 'data/something-something-v2-train.json'
     # VAL_JSON_PATH: 'data/something-something-v2-validation.json'
-    LABELS_CONCEPTS_PATH: 'data/labels_and_concepts.h5'
-    GLOVE_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/glove.840B.300d.txt'
-    LABEL_NAMES_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/label_names_10percent.txt'
+    LABELS_CONCEPTS_PATH: 'data/lab_con_{}.h5'
