@@ -2,6 +2,7 @@ from __future__ import print_function
 
 from comet_ml import Experiment
 
+from pathlib import Path
 import sys
 import os
 import shutil
@@ -165,6 +166,8 @@ class Trainer():
         prefix = ""
         if is_best:
             prefix = "best_"
+            for p in Path(self.model_dir).glob('best_*'):
+                p.unlink()
         save_model(self.model, self.optimizer, iteration, self.model_dir, model_name=prefix+"model")
         save_model(self.model_ema, None, iteration, self.model_dir, model_name=prefix+"model_ema")
 
@@ -328,6 +331,10 @@ class Trainer():
         self.scheduler.step(avg_loss)
         accuracy_ema = sum(all_accuracies_ema) / float(len(all_accuracies_ema))
         accuracy = sum(all_accuracies) / float(len(all_accuracies))
-        experiment.log_metric('accuracy', accuracy)
+        metrics = {
+            'loss': avg_loss,
+            'accuracy': accuracy,
+        }
+        experiment.log_metrics(metrics)
 
         return accuracy, accuracy_ema
