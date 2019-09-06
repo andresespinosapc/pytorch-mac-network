@@ -272,7 +272,7 @@ class OutputUnit(nn.Module):
                                         nn.Linear(module_dim, module_dim),
                                         nn.ELU(),
                                         nn.Dropout(0.15),
-                                        nn.Linear(module_dim, num_answers))
+                                        nn.Linear(module_dim, num_answers)) #labels_matrix.size(0)
 
         self.labels_matrix = labels_matrix
         self.attn = nn.Linear(module_dim, 1)
