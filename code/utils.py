@@ -103,14 +103,14 @@ def load_label_embeddings(cfg):
 
     # Load word embeddings
     word_to_vec = {}
-    for line in open(cfg.DATASET.GLOVE_PATH, encoding='utf8'):
+    for line in open(cfg.PREPROCESS.GLOVE_PATH, encoding='utf8'):
         splitted = line.split(' ')
         word = splitted[0]
         vec = np.array([float(n) for n in splitted[1:]])
         word_to_vec[word] = vec
 
     # Load labels list
-    labels = [line.strip() for line in open(cfg.DATASET.LABEL_NAMES_PATH)]
+    labels = [line.strip() for line in open(cfg.PREPROCESS.LABEL_NAMES_PATH)]
     embed_dim = next(iter(word_to_vec.values())).shape[0]
 
     # Create labels matrix
