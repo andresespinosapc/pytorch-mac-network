@@ -37,5 +37,5 @@ DATASET:
     # LABELS_JSON_PATH: 'data/something-something-v2-labels.json'
     # TRAIN_JSON_PATH: 'data/something-something-v2-train.json'
     # VAL_JSON_PATH: 'data/something-something-v2-validation.json'
-    LABELS_CONCEPTS_PATH: 'data/lab_con_{}.h5'
+    LABELS_CONCEPTS_PATH: '/mnt/nas/GrimaRepo/aespinosa/pytorch-mac-network/data/lab_con_tok_stop_nlem.h5'
 
