@@ -272,7 +272,7 @@ class OutputUnit(nn.Module):
                                         nn.Linear(module_dim, module_dim),
                                         nn.ELU(),
                                         nn.Dropout(0.15),
-                                        nn.Linear(module_dim, num_answers)) #labels_matrix.size(0)
+                                        nn.Linear(module_dim, labels_matrix.size(0))) #labels_matrix.size(0)
 
         self.labels_matrix = labels_matrix
         self.attn = nn.Linear(module_dim, 1)
@@ -286,7 +286,7 @@ class OutputUnit(nn.Module):
             interactions = memory * labels_matrix
             out = self.attn(interactions).squeeze(2)
         else:
-            out = self.classifier(out)
+            out = self.classifier(memory)
 
         return out
 
