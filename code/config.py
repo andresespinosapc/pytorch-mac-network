@@ -13,6 +13,15 @@ __C.GPU_ID = '0'
 __C.CUDA = True
 __C.WORKERS = 4
 
+# Preprocess options
+__C.PREPROCESS = edict()
+__C.PREPROCESS.GLOVE_PATH = 'data/glove.840B.300d.txt'
+__C.PREPROCESS.LABEL_NAMES_PATH = 'data/label_names.txt'
+__C.PREPROCESS.WORD_TOKENIZE = False
+__C.PREPROCESS.REMOVE_STOPWORDS = False
+__C.PREPROCESS.LEMMATIZE = False
+__C.PREPROCESS = dict(__C.PREPROCESS)
+
 # Training options
 __C.TRAIN = edict()
 __C.TRAIN.FLAG = True
@@ -34,7 +43,6 @@ __C.TRAIN = dict(__C.TRAIN)
 
 __C.MODEL = edict()
 __C.MODEL.MODULE_DIM = 512
-__C.MODEL.LABELS_MATRIX = False
 __C.MODEL = dict(__C.MODEL)
 
 __C.DROPOUT = edict()
@@ -45,9 +53,7 @@ __C.DROPOUT = dict(__C.DROPOUT)
 __C.DATASET = edict()
 __C.DATASET.DATA_TYPE = 'features'
 __C.DATASET.FEATURES_PATH = 'data/feats.h5'
-__C.DATASET.GLOVE_PATH = 'data/glove.840B.300d.txt'
-__C.DATASET.LABEL_NAMES_PATH = 'data/label_names.txt'
-__C.DATASET.LABELS_CONCEPTS_PATH = 'data/labels_concepts.h5'
+__C.DATASET.LABELS_CONCEPTS_PATH = 'data/lab_con_{}.h5'
 __C.DATASET = dict(__C.DATASET)
 
 
