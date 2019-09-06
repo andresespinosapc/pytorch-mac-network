@@ -8,6 +8,10 @@ import json
 from copy import deepcopy
 from config import cfg
 
+from nltk import word_tokenize
+from nltk.corpus import stopwords
+from nltk.stem.porter import PorterStemmer
+
 from torch.nn import init
 import torch
 from torch.autograd import Variable
@@ -97,7 +101,14 @@ def load_vocab(cfg):
     return vocab
 
 
-def load_label_embeddings(cfg):
+def get_labels_concepts_filename(cfg):
+    return cfg.DATASET.LABELS_CONCEPTS_PATH.format('{}_{}_{}'.format(
+        'tok' if cfg.PREPROCESS.WORD_TOKENIZE else 'ntok',
+        'stop' if cfg.PREPROCESS.REMOVE_STOPWORDS else 'nstop',
+        'lem' if cfg.PREPROCESS.LEMMATIZE else 'nlem',
+    ))
+
+def load_label_embeddings(cfg, get_concept_words=False):
     def invert_dict(d):
         return {v: k for k, v in d.items()}
 
@@ -117,7 +128,13 @@ def load_label_embeddings(cfg):
     label_words = []
     labels_matrix = np.empty((len(labels), embed_dim), dtype=np.float32)
     for i, label in enumerate(labels):
-        words = list(map(lambda x: x.lower(), label.split(' ')))
+        tokens = word_tokenize(label) if cfg.PREPROCESS.WORD_TOKENIZE else label.split(' ')
+        words = list(map(lambda x: x.lower(), tokens))
+        if cfg.PREPROCESS.REMOVE_STOPWORDS:
+            words = list(filter(lambda x: x not in stopwords.words('english'), words))
+        if cfg.PREPROCESS.LEMMATIZE:
+            stemmer = PorterStemmer()
+            words = list(map(stemmer.stem, words))
         embed_sum = np.zeros(embed_dim)
         n_embed = 0
         for word in words:
@@ -132,13 +149,18 @@ def load_label_embeddings(cfg):
 
     # Create concepts
     concepts = []
+    concept_words = []
     for word in label_words:
         vec = word_to_vec.get(word)
         if vec is not None:
             concepts.append(vec)
+            concept_words.append(word)
     concepts = np.array(concepts, dtype=np.float32)
 
-    return labels_matrix, concepts
+    if get_concept_words:
+        return labels_matrix, concepts, concept_words
+    else:
+        return labels_matrix, concepts
 
 
 def generateVarDpMask(shape, keepProb):
