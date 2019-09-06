@@ -24,7 +24,7 @@ from datasets import S2SFeatureDataset, collate_fn
 import mac
 
 
-experiment = Experiment(project_name='mac-actions', workspace='andresespinosapc')
+experiment = Experiment(project_name='mac-actions', workspace='andresespinosapc', disable=True, api_key='')
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
