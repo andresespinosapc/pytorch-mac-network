@@ -264,13 +264,15 @@ class OutputUnit(nn.Module):
         super(OutputUnit, self).__init__()
 
         module_dim = cfg.MODEL.MODULE_DIM
+        self.use_labels_matrix = cfg.MODEL.LABELS_MATRIX
+
         self.memory_proj = nn.Linear(module_dim, wordvec_dim)
 
-        # self.classifier = nn.Sequential(nn.Dropout(0.15),
-        #                                 nn.Linear(module_dim * 2, module_dim),
-        #                                 nn.ELU(),
-        #                                 nn.Dropout(0.15),
-        #                                 nn.Linear(module_dim, num_answers))
+        self.classifier = nn.Sequential(nn.Dropout(0.15),
+                                        nn.Linear(module_dim, module_dim),
+                                        nn.ELU(),
+                                        nn.Dropout(0.15),
+                                        nn.Linear(module_dim, num_answers))
 
         self.labels_matrix = labels_matrix
         self.attn = nn.Linear(module_dim, 1)
@@ -278,11 +280,13 @@ class OutputUnit(nn.Module):
     def forward(self, memory):
         # apply classifier to output of MacCell and the question
         memory = self.memory_proj(memory).unsqueeze(1)
-        # out = self.classifier(out)
-        
-        labels_matrix = self.labels_matrix.unsqueeze(0).expand(memory.size(0), -1, -1)
-        interactions = memory * labels_matrix
-        out = self.attn(interactions).squeeze(2)
+
+        if self.use_labels_matrix:
+            labels_matrix = self.labels_matrix.unsqueeze(0).expand(memory.size(0), -1, -1)
+            interactions = memory * labels_matrix
+            out = self.attn(interactions).squeeze(2)
+        else:
+            out = self.classifier(out)
 
         return out
 

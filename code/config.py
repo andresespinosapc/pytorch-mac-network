@@ -34,6 +34,7 @@ __C.TRAIN = dict(__C.TRAIN)
 
 __C.MODEL = edict()
 __C.MODEL.MODULE_DIM = 512
+__C.MODEL.LABELS_MATRIX = False
 __C.MODEL = dict(__C.MODEL)
 
 __C.DROPOUT = edict()
