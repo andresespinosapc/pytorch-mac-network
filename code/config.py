@@ -54,6 +54,7 @@ __C.DATASET = edict()
 __C.DATASET.DATA_TYPE = 'features'
 __C.DATASET.FEATURES_PATH = 'data/feats.h5'
 __C.DATASET.LABELS_CONCEPTS_PATH = 'data/lab_con_{}.h5'
+__C.DATASET.LEARNED_EMBEDDINGS = False
 __C.DATASET = dict(__C.DATASET)
 
 

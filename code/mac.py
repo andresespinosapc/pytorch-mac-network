@@ -8,13 +8,22 @@ from utils import *
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-def load_MAC(cfg, vocab, labels_matrix, concepts, kb_shape=(72, 11, 11)):
+def load_MAC(cfg, kb_shape=(72, 11, 11)):
+    learned_embeds = cfg.DATASET.LEARNED_EMBEDDINGS
+    if learned_embeds:
+        labels_matrix, concepts, vocab_size = load_label_word_ids(cfg)
+    else:
+        with h5py.File(get_labels_concepts_filename(cfg)) as h5f:
+            labels_matrix = h5f['labels_matrix'][:]
+            concepts = h5f['concepts'][:]
+
     kwargs = {
-        'vocab': vocab,
+        'vocab_size': vocab_size,
         'max_step': cfg.TRAIN.MAX_STEPS,
         'labels_matrix': labels_matrix,
         'concepts': concepts,
         'kb_shape': kb_shape,
+        'learned_embeds': learned_embeds,
     }
 
     model = MACNetwork(cfg, **kwargs)
@@ -224,7 +233,7 @@ class MACUnit(nn.Module):
 
 
 class InputUnit(nn.Module):
-    def __init__(self, cfg, vocab_size, wordvec_dim=300, rnn_dim=512, bidirectional=True):
+    def __init__(self, cfg, vocab_size=None, wordvec_dim=300, rnn_dim=512, bidirectional=True):
         super(InputUnit, self).__init__()
 
         module_dim = cfg.MODEL.MODULE_DIM
@@ -260,7 +269,7 @@ class InputUnit(nn.Module):
 
 
 class OutputUnit(nn.Module):
-    def __init__(self, labels_matrix, wordvec_dim=300, num_answers=28):
+    def __init__(self, wordvec_dim=300, num_answers=28):
         super(OutputUnit, self).__init__()
 
         module_dim = cfg.MODEL.MODULE_DIM
@@ -272,15 +281,13 @@ class OutputUnit(nn.Module):
         #                                 nn.Dropout(0.15),
         #                                 nn.Linear(module_dim, num_answers))
 
-        self.labels_matrix = labels_matrix
         self.attn = nn.Linear(module_dim, 1)
 
-    def forward(self, memory):
+    def forward(self, memory, labels_matrix):
         # apply classifier to output of MacCell and the question
         memory = self.memory_proj(memory).unsqueeze(1)
         # out = self.classifier(out)
         
-        labels_matrix = self.labels_matrix.unsqueeze(0).expand(memory.size(0), -1, -1)
         interactions = memory * labels_matrix
         out = self.attn(interactions).squeeze(2)
 
@@ -288,25 +295,29 @@ class OutputUnit(nn.Module):
 
 
 class MACNetwork(nn.Module):
-    def __init__(self, cfg, max_step, vocab, labels_matrix, concepts, kb_shape=(0, 0, 0)):
+    def __init__(self, cfg, max_step, labels_matrix, concepts, vocab_size=None, wordvec_dim=300, learned_embeds=False, kb_shape=(0, 0, 0)):
         super().__init__()
 
         self.cfg = cfg
-        encoder_vocab_size = len(vocab['question_token_to_idx'])
 
-        self.input_unit = InputUnit(cfg, vocab_size=encoder_vocab_size)
+        self.input_unit = InputUnit(cfg)
 
         self.labels_matrix = nn.Parameter(torch.tensor(labels_matrix), requires_grad=False)
-        self.output_unit = OutputUnit(self.labels_matrix)
+        self.concepts = nn.Parameter(torch.tensor(concepts), requires_grad=False)
+        self.learned_embeds = learned_embeds
+        if learned_embeds:
+            self.embed = nn.Embedding(vocab_size, wordvec_dim)
+            self.embed_dropout = nn.Dropout(p=0.15)
+
+        self.output_unit = OutputUnit()
 
         self.mac = MACUnit(cfg, max_step=max_step, concepts_size=concepts.shape[0], kb_shape=kb_shape)
 
         init_modules(self.modules(), w_init=self.cfg.TRAIN.WEIGHT_INIT)
+        nn.init.uniform_(self.embed.weight, -1.0, 1.0)
         # nn.init.uniform_(self.input_unit.encoder_embed.weight, -1.0, 1.0)
         nn.init.normal_(self.mac.initial_memory)
         nn.init.normal_(self.mac.initial_control)
-
-        self.concepts = nn.Parameter(torch.tensor(concepts), requires_grad=False)
 
     def get_attentions(self):
         if len(self.mac.concept_attns) == 0:
@@ -320,14 +331,24 @@ class MACNetwork(nn.Module):
 
     def forward(self, image):
         # get image, word, and sentence embeddings
-        concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1, -1)
+        if self.learned_embeds:
+            concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1)
+            concepts = self.embed_dropout(self.embed(concepts))
+        else:
+            concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1, -1)
         contextual_words, img = self.input_unit(image, concepts)
 
         # apply MacCell
         memory = self.mac(contextual_words, img)
 
         # get classification
-        out = self.output_unit(memory)
+        if self.learned_embeds:
+            labels_matrix = self.labels_matrix.unsqueeze(0).expand(memory.size(0), -1, -1)
+            labels_matrix = self.embed(labels_matrix).mean(dim=2)
+            labels_matrix = self.embed_dropout(labels_matrix)
+        else:
+            labels_matrix = self.labels_matrix.unsqueeze(0).expand(memory.size(0), -1, -1)
+        out = self.output_unit(memory, labels_matrix)
 
         return out
 
