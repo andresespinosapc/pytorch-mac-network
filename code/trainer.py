@@ -26,7 +26,7 @@ from datasets import S2SFeatureDataset, collate_fn
 import mac
 
 
-experiment = Experiment(project_name='mac-actions', workspace='andresespinosapc')
+experiment = Experiment(project_name='mac-actions', workspace='andresespinosapc', disabled=True, api_key='')
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -99,13 +99,8 @@ class Trainer():
                                          shuffle=False, num_workers=cfg.WORKERS)
 
         # load model
-        with h5py.File(get_labels_concepts_filename(cfg)) as h5f:
-            self.labels_matrix = h5f['labels_matrix'][:]
-            self.concepts = h5f['concepts'][:]
         # self.vocab = load_vocab(cfg)
-        # TEMP
-        self.vocab = { 'question_token_to_idx': [] }
-        self.model, self.model_ema = mac.load_MAC(cfg, self.vocab, self.labels_matrix, self.concepts)
+        self.model, self.model_ema = mac.load_MAC(cfg)
         self.weight_moving_average(alpha=0)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(

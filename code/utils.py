@@ -108,6 +108,56 @@ def get_labels_concepts_filename(cfg):
         'lem' if cfg.PREPROCESS.LEMMATIZE else 'nlem',
     ))
 
+
+def preprocess_sentence(cfg, sentence):
+    # All letters to lowercase
+    sentence = sentence.lower()
+    # Tokenize
+    tokens = word_tokenize(sentence) if cfg.PREPROCESS.WORD_TOKENIZE else sentence.split(' ')
+    # Remove stopwords
+    if cfg.PREPROCESS.REMOVE_STOPWORDS:
+        tokens = list(filter(lambda x: x not in stopwords.words('english'), tokens))
+    # Lemmatize (stemming)
+    if cfg.PREPROCESS.LEMMATIZE:
+        stemmer = PorterStemmer()
+        tokens = list(map(stemmer.stem, tokens))
+
+    return tokens
+
+def load_label_word_ids(cfg):
+    # Load labels list
+    labels = [line.strip() for line in open(cfg.PREPROCESS.LABEL_NAMES_PATH)]
+
+    label_words = []
+    max_len = 0
+    for label in labels:
+        words = preprocess_sentence(cfg, label)
+        if len(words) > max_len:
+            max_len = len(words)
+        for word in words:
+            if word not in label_words:
+                label_words.append(word)
+    vocab_size = len(label_words) + 1
+    
+    # Create mapping from word to id
+    #   Start from 1 to use 0 for padding
+    word_to_id = { word: i+1 for i, word in enumerate(label_words) }
+
+    labels_matrix = np.empty([len(labels), max_len], dtype=np.int64)
+    for i, label in enumerate(labels):
+        words = preprocess_sentence(cfg, label)
+        ids = [word_to_id[word] for word in words]
+        ids += [0] * (max_len - len(words))
+        labels_matrix[i] = np.array(ids)
+
+    concepts = []
+    for word in label_words:
+        concepts.append(word_to_id[word])
+    concepts = np.array(concepts, dtype=np.int64)
+
+    return labels_matrix, concepts, vocab_size
+
+
 def load_label_embeddings(cfg, get_concept_words=False):
     def invert_dict(d):
         return {v: k for k, v in d.items()}
@@ -128,13 +178,7 @@ def load_label_embeddings(cfg, get_concept_words=False):
     label_words = []
     labels_matrix = np.empty((len(labels), embed_dim), dtype=np.float32)
     for i, label in enumerate(labels):
-        tokens = word_tokenize(label) if cfg.PREPROCESS.WORD_TOKENIZE else label.split(' ')
-        words = list(map(lambda x: x.lower(), tokens))
-        if cfg.PREPROCESS.REMOVE_STOPWORDS:
-            words = list(filter(lambda x: x not in stopwords.words('english'), words))
-        if cfg.PREPROCESS.LEMMATIZE:
-            stemmer = PorterStemmer()
-            words = list(map(stemmer.stem, words))
+        words = preprocess_sentence(cfg, label)
         embed_sum = np.zeros(embed_dim)
         n_embed = 0
         for word in words:

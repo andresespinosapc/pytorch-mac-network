@@ -4,7 +4,7 @@ CUDA: FALSE
 
 PREPROCESS:
     GLOVE_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/glove.840B.300d.txt'
-    LABEL_NAMES_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/label_names_10percent.txt'
+    LABEL_NAMES_PATH: 'data/label_names.txt'
     WORD_TOKENIZE: False
     REMOVE_STOPWORDS: False
     LEMMATIZE: False
@@ -32,9 +32,10 @@ DROPOUT:
 
 DATASET:
     DATA_TYPE: 'features'
-    FEATURES_PATH: '/vault/araymond/CAN/s2s_feats_10percent_final.h5'
+    FEATURES_PATH: 'data/feats.h5'
     # VIDEOS_DIR: 'data/20bn-something-something-v2-frames'
     # LABELS_JSON_PATH: 'data/something-something-v2-labels.json'
     # TRAIN_JSON_PATH: 'data/something-something-v2-train.json'
     # VAL_JSON_PATH: 'data/something-something-v2-validation.json'
     LABELS_CONCEPTS_PATH: 'data/lab_con_{}.h5'
+    LEARNED_EMBEDDINGS: True
