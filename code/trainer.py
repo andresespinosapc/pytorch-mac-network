@@ -166,7 +166,8 @@ class Trainer():
         prefix = ""
         if is_best:
             prefix = "best_"
-            for p in Path(self.model_dir).glob('best_*'):
+            # Remove previous best checkpoint
+            for p in Path(self.model_dir).glob(prefix + '*'):
                 p.unlink()
         save_model(self.model, self.optimizer, iteration, self.model_dir, model_name=prefix+"model")
         save_model(self.model_ema, None, iteration, self.model_dir, model_name=prefix+"model_ema")
