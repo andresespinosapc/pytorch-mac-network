@@ -26,7 +26,14 @@ from datasets import S2SFeatureDataset, collate_fn
 import mac
 
 
-experiment = Experiment(project_name='mac-actions', workspace='andresespinosapc', disabled=True, api_key='')
+comet_args = {
+    'project_name': 'mac-actions',
+    'workspace': 'andresespinosapc',
+}
+if os.environ['COMET_DISABLE']:
+    comet_args['disabled'] = True
+    comet_args['api_key'] = ''
+experiment = Experiment(**comet_args)
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
