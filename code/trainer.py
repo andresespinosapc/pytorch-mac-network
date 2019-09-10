@@ -11,6 +11,7 @@ import pprint
 from tqdm import tqdm
 from easydict import EasyDict as edict
 import h5py
+import numpy as np
 
 from tensorboardX import SummaryWriter
 import torch.backends.cudnn as cudnn
@@ -21,7 +22,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
 
 from utils import mkdir_p, save_model, \
-    load_model, load_vocab, load_label_embeddings, get_labels_concepts_filename
+    load_model, load_vocab, load_label_embeddings, get_labels_concepts_filename, calc_accuracy
 from datasets import S2SFeatureDataset, collate_fn
 import mac
 
@@ -30,7 +31,7 @@ comet_args = {
     'project_name': 'mac-actions',
     'workspace': 'andresespinosapc',
 }
-if os.environ['COMET_DISABLE']:
+if os.environ.get('COMET_DISABLE'):
     comet_args['disabled'] = True
     comet_args['api_key'] = ''
 experiment = Experiment(**comet_args)
@@ -213,11 +214,12 @@ class Trainer():
             ############################
             # (3) Log Progress
             ############################
-            correct = scores.detach().argmax(1) == target
-            accuracy = correct.sum().cpu().numpy() / target.shape[0]
+            prec1, prec5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+            accuracy = prec1
             metrics = {
                 'loss': loss.item(),
-                'accuracy': accuracy,
+                'top1': prec1,
+                'top5': prec5,
             }
             experiment.log_metrics(metrics)
 
@@ -322,22 +324,23 @@ class Trainer():
                 all_losses.append(loss.item())
                 scores_ema = self.model_ema(image)
 
-            correct_ema = scores_ema.detach().argmax(1) == target
-            accuracy_ema = correct_ema.sum().cpu().numpy() / target.shape[0]
-            all_accuracies_ema.append(accuracy_ema)
+            prec1_ema, prec5_ema = calc_accuracy(scores_ema.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+            all_accuracies_ema.append((prec1_ema, prec5_ema))
 
-            correct = scores.detach().argmax(1) == target
-            accuracy = correct.sum().cpu().numpy() / target.shape[0]
-            all_accuracies.append(accuracy)
+            prec1, prec5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+            all_accuracies.append((prec1, prec5))
 
         avg_loss = sum(all_losses) / float(len(all_losses))
         self.scheduler.step(avg_loss)
-        accuracy_ema = sum(all_accuracies_ema) / float(len(all_accuracies_ema))
-        accuracy = sum(all_accuracies) / float(len(all_accuracies))
+        prec1_ema = np.mean(list(zip(*all_accuracies_ema))[0])
+        prec5_ema = np.mean(list(zip(*all_accuracies_ema))[1])
+        prec1 = np.mean(list(zip(*all_accuracies))[0])
+        prec5 = np.mean(list(zip(*all_accuracies))[1])
         metrics = {
             'loss': avg_loss,
-            'accuracy': accuracy,
+            'top1': prec1,
+            'top5': prec5,
         }
         experiment.log_metrics(metrics)
 
-        return accuracy, accuracy_ema
+        return prec1, prec1_ema

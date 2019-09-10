@@ -1,3 +1,5 @@
+import h5py
+
 import torch
 import torch.nn as nn
 import torch.nn.init as init
@@ -10,6 +12,7 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 
 def load_MAC(cfg, kb_shape=(72, 11, 11)):
     learned_embeds = cfg.DATASET.LEARNED_EMBEDDINGS
+    vocab_size = None
     if learned_embeds:
         labels_matrix, concepts, vocab_size = load_label_word_ids(cfg)
     else:
@@ -314,7 +317,8 @@ class MACNetwork(nn.Module):
         self.mac = MACUnit(cfg, max_step=max_step, concepts_size=concepts.shape[0], kb_shape=kb_shape)
 
         init_modules(self.modules(), w_init=self.cfg.TRAIN.WEIGHT_INIT)
-        nn.init.uniform_(self.embed.weight, -1.0, 1.0)
+        if learned_embeds:
+            nn.init.uniform_(self.embed.weight, -1.0, 1.0)
         # nn.init.uniform_(self.input_unit.encoder_embed.weight, -1.0, 1.0)
         nn.init.normal_(self.mac.initial_memory)
         nn.init.normal_(self.mac.initial_control)
