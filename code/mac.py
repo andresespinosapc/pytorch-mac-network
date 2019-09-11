@@ -243,14 +243,36 @@ class InputUnit(nn.Module):
         self.dim = module_dim
         self.cfg = cfg
 
-        self.stem = nn.Sequential(
-            nn.Dropout(p=cfg.DROPOUT.STEM),
-            nn.Conv3d(256, module_dim, 3, 1, 1),
-            nn.ELU(),
-            nn.Dropout(p=cfg.DROPOUT.STEM),
-            nn.Conv3d(module_dim, module_dim, 3, 1, 1),
-            nn.ELU(),
-        )
+        if cfg.MODEL.STEM == 'from_baseline':
+            self.stem = nn.Sequential(
+                nn.Conv3d(256, 256, kernel_size=(3, 3, 3), stride=1, dilation=(1, 1, 1), padding=(1, 1, 1)),
+                nn.BatchNorm3d(256),
+                nn.ReLU(inplace=True),
+                nn.Conv3d(256, 256, kernel_size=(3, 3, 3), stride=1, dilation=(1, 1, 1), padding=(1, 1, 1)),
+                nn.BatchNorm3d(256),
+                nn.ReLU(inplace=True),
+                nn.Conv3d(256, module_dim, kernel_size=(3, 3, 3), stride=(1, 2, 2), dilation=(1, 1, 1), padding=(1, 1, 1)),
+                nn.BatchNorm3d(module_dim),
+                nn.ReLU(inplace=True),
+                nn.Dropout3d(p=0.2),
+                nn.Conv3d(module_dim, module_dim, kernel_size=(3, 3, 3), stride=1, dilation=(1, 1, 1), padding=(1, 1, 1)),
+                nn.BatchNorm3d(module_dim),
+                nn.ReLU(inplace=True),
+                nn.Conv3d(module_dim, module_dim, kernel_size=(3, 3, 3), stride=(1, 2, 2), dilation=(1, 1, 1), padding=(1, 1, 1)),
+                nn.BatchNorm3d(module_dim),
+                nn.ReLU(inplace=True),
+            )
+        elif cfg.MODEL.STEM == 'from_mac':
+            self.stem = nn.Sequential(
+                nn.Dropout(p=cfg.DROPOUT.STEM),
+                nn.Conv3d(256, module_dim, 3, 1, 1),
+                nn.ELU(),
+                nn.Dropout(p=cfg.DROPOUT.STEM),
+                nn.Conv3d(module_dim, module_dim, 3, 1, 1),
+                nn.ELU(),
+            )
+        else:
+            raise NotImplementedError('Invalid model stem in configuration')
 
         # self.encoder_embed = nn.Embedding(vocab_size, wordvec_dim)
         # self.embedding_dropout = nn.Dropout(p=0.15)

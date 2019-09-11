@@ -108,7 +108,12 @@ class Trainer():
 
         # load model
         # self.vocab = load_vocab(cfg)
-        self.model, self.model_ema = mac.load_MAC(cfg)
+        # TEMP
+        if cfg.MODEL.STEM == 'from_baseline':
+            kb_shape = (72, 3, 3)
+        elif cfg.MODEL.STEM == 'from_mac':
+            kb_shape = (72, 11, 11)
+        self.model, self.model_ema = mac.load_MAC(cfg, kb_shape=kb_shape)
         self.weight_moving_average(alpha=0)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(

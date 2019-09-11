@@ -42,6 +42,7 @@ __C.TRAIN.VAR_DROPOUT = False
 __C.TRAIN = dict(__C.TRAIN)
 
 __C.MODEL = edict()
+__C.MODEL.STEM = 'from_mac'
 __C.MODEL.MODULE_DIM = 512
 __C.MODEL = dict(__C.MODEL)
 
