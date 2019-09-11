@@ -261,7 +261,7 @@ class Trainer():
             # self.scheduler.step(dict['avg_loss'])
             with experiment.validate():
                 self.log_results(epoch, dict)
-            if cfg.TRAIN.EALRY_STOPPING:
+            if cfg.TRAIN.EARLY_STOPPING:
                 if epoch - cfg.TRAIN.PATIENCE == self.previous_best_epoch:
                     break
 
