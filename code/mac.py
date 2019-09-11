@@ -266,11 +266,13 @@ class InputUnit(nn.Module):
             )
         elif cfg.MODEL.STEM == 'from_mac':
             self.stem = nn.Sequential(
-                nn.Dropout(p=cfg.DROPOUT.STEM),
+                nn.Dropout3d(p=cfg.DROPOUT.STEM),
                 nn.Conv3d(256, module_dim, 3, 1, 1),
+                nn.BatchNorm3d(256),
                 nn.ELU(),
-                nn.Dropout(p=cfg.DROPOUT.STEM),
+                nn.Dropout3d(p=cfg.DROPOUT.STEM),
                 nn.Conv3d(module_dim, module_dim, 3, 1, 1),
+                nn.BatchNorm3d(module_dim),
                 nn.ELU(),
             )
         else:
