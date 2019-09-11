@@ -21,7 +21,7 @@ from torch.autograd import Variable
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
 
-from utils import mkdir_p, save_model, \
+from utils import mkdir_p, save_model, AverageMeter, \
     load_model, load_vocab, load_label_embeddings, get_labels_concepts_filename, calc_accuracy
 from datasets import S2SFeatureDataset, collate_fn
 import mac
@@ -185,6 +185,10 @@ class Trainer():
         load_model(self.model_ema, None, iteration, model_dir, model_name='model_ema')
 
     def train_epoch(self, epoch):
+        loss_meter = AverageMeter()
+        top1_meter = AverageMeter()
+        top5_meter = AverageMeter()
+
         cfg = self.cfg
         avg_loss = 0
         train_accuracy = 0
@@ -192,9 +196,9 @@ class Trainer():
         self.labeled_data = iter(self.dataloader)
         self.set_mode("train")
 
-        dataset = tqdm(self.labeled_data)
+        pbar = tqdm(self.labeled_data)
 
-        for image, target in dataset:
+        for image, target in pbar:
             ######################################################
             # (1) Prepare training data
             ######################################################
@@ -219,48 +223,45 @@ class Trainer():
             ############################
             # (3) Log Progress
             ############################
-            prec1, prec5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
-            accuracy = prec1
-            metrics = {
-                'loss': loss.item(),
-                'top1': prec1,
-                'top5': prec5,
-            }
-            experiment.log_metrics(metrics)
+            top1, top5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+            loss_meter.update(loss.item(), target.shape[0])
+            top1_meter.update(top1, target.shape[0])
+            top5_meter.update(top5, target.shape[0])
 
-            if avg_loss == 0:
-                avg_loss = loss.item()
-                train_accuracy = accuracy
-            else:
-                avg_loss = 0.99 * avg_loss + 0.01 * loss.item()
-                train_accuracy = 0.99 * train_accuracy + 0.01 * accuracy
-            self.total_epoch_loss += loss.item()
+            # accuracy = top1
+            # if avg_loss == 0:
+            #     avg_loss = loss.item()
+            #     train_accuracy = accuracy
+            # else:
+            #     avg_loss = 0.99 * avg_loss + 0.01 * loss.item()
+            #     train_accuracy = 0.99 * train_accuracy + 0.01 * accuracy
+            # self.total_epoch_loss += loss.item()
 
-            dataset.set_description(
-                'Epoch: {}; Avg Loss: {:.5f}; Avg Train Acc: {:.5f}'.format(epoch + 1, avg_loss, train_accuracy)
+            pbar.set_description(
+                'Epoch: {}; Avg Loss: {:.5f}; Avg Top1: {:.5f}; Avg Top5: {:.5f}'.format(
+                    epoch + 1, loss_meter.avg, top1_meter.avg, top5_meter.avg
+                )
             )
 
         metrics = {
-            'avg_loss': avg_loss,
-            'epoch': epoch,
+            'avg_loss': loss_meter.avg,
+            'avg_top1': top1_meter.avg,
+            'avg_top5': top5_meter.avg,
         }
         experiment.log_metrics(metrics)
-        dict = {
-            "avg_loss": avg_loss,
-            "train_accuracy": train_accuracy
-        }
 
-        return dict
+        return metrics
 
     def train(self):
         cfg = self.cfg
         print("Start Training")
         for epoch in range(self.max_epochs):
             with experiment.train():
-                dict = self.train_epoch(epoch)
-            # self.scheduler.step(dict['avg_loss'])
+                metrics = self.train_epoch(epoch)
+            # self.scheduler.step(metrics['avg_loss'])
             with experiment.validate():
-                self.log_results(epoch, dict)
+                self.log_results(epoch, metrics)
+            experiment.log_metric('epoch', epoch)
             if cfg.TRAIN.EARLY_STOPPING:
                 if epoch - cfg.TRAIN.PATIENCE == self.previous_best_epoch:
                     break
@@ -270,17 +271,18 @@ class Trainer():
         print("Finished Training")
         print("Highest validation accuracy: {} at epoch {}")
 
-    def log_results(self, epoch, dict, max_eval_samples=None):
+    def log_results(self, epoch, train_metrics, max_eval_samples=None):
         epoch += 1
-        self.writer.add_scalar("avg_loss", dict["avg_loss"], epoch)
-        self.writer.add_scalar("train_accuracy", dict["train_accuracy"], epoch)
+        for k, v in train_metrics.items():
+            self.writer.add_scalar('train_{}'.format(k), v, epoch)
 
-        val_accuracy, val_accuracy_ema = self.calc_accuracy("validation", max_samples=max_eval_samples)
-        self.writer.add_scalar("val_accuracy_ema", val_accuracy_ema, epoch)
-        self.writer.add_scalar("val_accuracy", val_accuracy, epoch)
+        val_metrics = self.calc_metrics("validation", max_samples=max_eval_samples)
+        for k, v in val_metrics.items():
+            self.writer.add_scalar('val_{}'.format(k), v, epoch)
 
-        print("Epoch: {}\tVal Acc: {},\tVal Acc EMA: {},\tAvg Loss: {},\tLR: {}".
-              format(epoch, val_accuracy, val_accuracy_ema, dict["avg_loss"], self.lr))
+        val_accuracy, val_accuracy_ema = val_metrics['avg_top1'], val_metrics['avg_top1_ema']
+        print("Epoch: {}\tVal Top1: {},\tVal Top1 EMA: {},\tVal Avg Loss: {},\tLR: {}".
+              format(epoch, val_accuracy, val_accuracy_ema, val_metrics['avg_loss'], self.lr))
 
         if val_accuracy > self.previous_best_acc:
             self.previous_best_acc = val_accuracy
@@ -290,7 +292,7 @@ class Trainer():
         if epoch % self.snapshot_interval == 0:
             self.save_models(epoch)
 
-    def calc_accuracy(self, mode="train", max_samples=None):
+    def calc_metrics(self, mode="train", max_samples=None):
         self.set_mode("validation")
 
         if mode == "train":
@@ -307,9 +309,12 @@ class Trainer():
         else:
             max_iter = None
 
-        all_losses = []
-        all_accuracies = []
-        all_accuracies_ema = []
+        loss_meter = AverageMeter()
+        top1_meter = AverageMeter()
+        top5_meter = AverageMeter()
+        loss_ema_meter = AverageMeter()
+        top1_ema_meter = AverageMeter()
+        top5_ema_meter = AverageMeter()
 
         for _iteration in range(total_iters):
             try:
@@ -326,26 +331,28 @@ class Trainer():
             with torch.no_grad():
                 scores = self.model(image)
                 loss = self.loss_fn(scores, target)
-                all_losses.append(loss.item())
+                loss_meter.update(loss.item(), target.shape[0])
                 scores_ema = self.model_ema(image)
+                loss_ema = self.loss_fn(scores_ema, target)
+                loss_ema_meter.update(loss_ema.item(), target.shape[0])
 
-            prec1_ema, prec5_ema = calc_accuracy(scores_ema.detach().cpu(), target.detach().cpu(), topk=(1, 5))
-            all_accuracies_ema.append((prec1_ema, prec5_ema))
+            top1_ema, top5_ema = calc_accuracy(scores_ema.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+            top1_ema_meter.update(top1_ema, target.shape[0])
+            top5_ema_meter.update(top5_ema, target.shape[0])
 
-            prec1, prec5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
-            all_accuracies.append((prec1, prec5))
+            top1, top5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+            top1_meter.update(top1, target.shape[0])
+            top5_meter.update(top5, target.shape[0])
 
-        avg_loss = sum(all_losses) / float(len(all_losses))
-        self.scheduler.step(avg_loss)
-        prec1_ema = np.mean(list(zip(*all_accuracies_ema))[0])
-        prec5_ema = np.mean(list(zip(*all_accuracies_ema))[1])
-        prec1 = np.mean(list(zip(*all_accuracies))[0])
-        prec5 = np.mean(list(zip(*all_accuracies))[1])
+        self.scheduler.step(loss_meter.avg)
         metrics = {
-            'loss': avg_loss,
-            'top1': prec1,
-            'top5': prec5,
+            'avg_loss': loss_meter.avg,
+            'avg_top1': top1_meter.avg,
+            'avg_top5': top5_meter.avg,
+            'avg_loss_ema': loss_ema_meter.avg,
+            'avg_top1_ema': top1_ema_meter.avg,
+            'avg_top5_ema': top5_ema_meter.avg,
         }
         experiment.log_metrics(metrics)
 
-        return prec1, prec1_ema
+        return metrics
