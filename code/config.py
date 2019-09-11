@@ -47,6 +47,7 @@ __C.MODEL.MODULE_DIM = 512
 __C.MODEL = dict(__C.MODEL)
 
 __C.DROPOUT = edict()
+__C.DROPOUT.READ_UNIT = 0.15
 __C.DROPOUT.STEM = 0.18
 __C.DROPOUT = dict(__C.DROPOUT)
 

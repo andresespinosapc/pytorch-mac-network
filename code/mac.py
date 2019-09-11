@@ -99,13 +99,15 @@ class ControlUnit(nn.Module):
 
 
 class ReadUnit(nn.Module):
-    def __init__(self, module_dim):
+    def __init__(self, cfg, module_dim):
         super().__init__()
+
+        self.cfg = cfg
 
         self.concat = nn.Linear(module_dim * 2, module_dim)
         self.concat_2 = nn.Linear(module_dim, module_dim)
         self.attn = nn.Linear(module_dim, 1)
-        self.dropout = nn.Dropout(0.15)
+        self.dropout = nn.Dropout(cfg.DROPOUT.READ_UNIT)
         self.kproj = nn.Linear(module_dim, module_dim)
         self.mproj = nn.Linear(module_dim, module_dim)
 
@@ -183,7 +185,7 @@ class MACUnit(nn.Module):
         self.cfg = cfg
         module_dim = cfg.MODEL.MODULE_DIM
         self.control = ControlUnit(cfg, module_dim, max_step)
-        self.read = ReadUnit(module_dim)
+        self.read = ReadUnit(cfg, module_dim)
         self.write = WriteUnit(cfg, module_dim)
 
         self.initial_memory = nn.Parameter(torch.zeros(1, module_dim))
