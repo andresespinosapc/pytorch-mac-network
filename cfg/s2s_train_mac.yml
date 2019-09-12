@@ -1,27 +1,38 @@
 GPU_ID: '0'
 WORKERS: 1
-CUDA: TRUE
+CUDA: FALSE
+
+PREPROCESS:
+    GLOVE_PATH: '/mnt/nas/GrimaRepo/aespinosa/glove.840B.300d.txt'
+    LABEL_NAMES_PATH: '/mnt/nas/GrimaRepo/aespinosa/label_names_10percent.txt'
+    WORD_TOKENIZE: True
+    REMOVE_STOPWORDS: True
+    LEMMATIZE: False
 
 TRAIN:
     FLAG: True
     LEARNING_RATE: 0.0001
-    BATCH_SIZE: 22
-    VAL_BATCH_SIZE: 22
+    BATCH_SIZE: 30
+    VAL_BATCH_SIZE: 30
     MAX_EPOCHS: 25
     SNAPSHOT_INTERVAL: 5
     RESUME_SNAPSHOT_DIR: ""
     RESUME_SNAPSHOT_ITER: 5
     WEIGHT_INIT: "xavier_uniform"
-    EALRY_STOPPING: True
+    EARLY_STOPPING: False
     PATIENCE: 5
     CLIP_GRADS: True
     MAX_STEPS: 4
 
 MODEL:
+    STEM: 'from_mac'
+    STEM_DROPOUT3D: True
+    STEM_BATCHNORM: True
     MODULE_DIM: 300
 
 DROPOUT:
-    STEM: 0.18
+    READ_UNIT: 0.0
+    STEM: 0.0
 
 DATASET:
     DATA_TYPE: 'features'
@@ -30,6 +41,5 @@ DATASET:
     # LABELS_JSON_PATH: 'data/something-something-v2-labels.json'
     # TRAIN_JSON_PATH: 'data/something-something-v2-train.json'
     # VAL_JSON_PATH: 'data/something-something-v2-validation.json'
-    LABELS_CONCEPTS_PATH: 'data/labels_and_concepts.h5'
-    GLOVE_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/glove.840B.300d.txt'
-    LABEL_NAMES_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/label_names_10percent.txt'
+    LABELS_CONCEPTS_PATH: 'data/lab_con_{}.h5'
+    LEARNED_EMBEDDINGS: False

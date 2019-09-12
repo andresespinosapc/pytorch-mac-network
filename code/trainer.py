@@ -24,7 +24,7 @@ from datasets import S2SFeatureDataset, collate_fn
 import mac
 
 
-experiment = Experiment(project_name='mac-actions', workspace='andresespinosapc')
+experiment = Experiment(project_name='mac-actions', workspace='andresespinosapc') # , disabled=True, api_key=''
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -194,6 +194,8 @@ class Trainer():
             self.optimizer.zero_grad()
 
             scores = self.model(image)
+            print(scores.size())
+            print(target.size())
             loss = self.loss_fn(scores, target)
             loss.backward()
 
