@@ -245,34 +245,42 @@ class InputUnit(nn.Module):
         self.dim = module_dim
         self.cfg = cfg
 
+        if cfg.MODEL.STEM_DROPOUT3D:
+            dropout_class = nn.Dropout3d
+        else:
+            dropout_class = nn.Dropout
+        if cfg.MODEL.STEM_BATCHNORM:
+            batchnorm_class = nn.BatchNorm3d
+        else:
+            batchnorm_class = nn.Identity
         if cfg.MODEL.STEM == 'from_baseline':
             self.stem = nn.Sequential(
                 nn.Conv3d(256, 256, kernel_size=(3, 3, 3), stride=1, dilation=(1, 1, 1), padding=(1, 1, 1)),
-                nn.BatchNorm3d(256),
+                batchnorm_class(256),
                 nn.ReLU(inplace=True),
                 nn.Conv3d(256, 256, kernel_size=(3, 3, 3), stride=1, dilation=(1, 1, 1), padding=(1, 1, 1)),
-                nn.BatchNorm3d(256),
+                batchnorm_class(256),
                 nn.ReLU(inplace=True),
                 nn.Conv3d(256, module_dim, kernel_size=(3, 3, 3), stride=(1, 2, 2), dilation=(1, 1, 1), padding=(1, 1, 1)),
-                nn.BatchNorm3d(module_dim),
+                batchnorm_class(module_dim),
                 nn.ReLU(inplace=True),
-                nn.Dropout3d(p=0.2),
+                dropout_class(p=0.2),
                 nn.Conv3d(module_dim, module_dim, kernel_size=(3, 3, 3), stride=1, dilation=(1, 1, 1), padding=(1, 1, 1)),
-                nn.BatchNorm3d(module_dim),
+                batchnorm_class(module_dim),
                 nn.ReLU(inplace=True),
                 nn.Conv3d(module_dim, module_dim, kernel_size=(3, 3, 3), stride=(1, 2, 2), dilation=(1, 1, 1), padding=(1, 1, 1)),
-                nn.BatchNorm3d(module_dim),
+                batchnorm_class(module_dim),
                 nn.ReLU(inplace=True),
             )
         elif cfg.MODEL.STEM == 'from_mac':
             self.stem = nn.Sequential(
-                nn.Dropout3d(p=cfg.DROPOUT.STEM),
+                dropout_class(p=cfg.DROPOUT.STEM),
                 nn.Conv3d(256, module_dim, 3, 1, 1),
-                nn.BatchNorm3d(256),
+                batchnorm_class(module_dim),
                 nn.ELU(),
-                nn.Dropout3d(p=cfg.DROPOUT.STEM),
+                dropout_class(p=cfg.DROPOUT.STEM),
                 nn.Conv3d(module_dim, module_dim, 3, 1, 1),
-                nn.BatchNorm3d(module_dim),
+                batchnorm_class(module_dim),
                 nn.ELU(),
             )
         else:

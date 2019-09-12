@@ -43,6 +43,8 @@ __C.TRAIN = dict(__C.TRAIN)
 
 __C.MODEL = edict()
 __C.MODEL.STEM = 'from_mac'
+__C.MODEL.STEM_DROPOUT3D = True
+__C.MODEL.STEM_BATCHNORM = True
 __C.MODEL.MODULE_DIM = 512
 __C.MODEL = dict(__C.MODEL)
 
