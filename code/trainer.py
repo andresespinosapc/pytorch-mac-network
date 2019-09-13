@@ -20,10 +20,13 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
+import torchvision
 
 from utils import mkdir_p, save_model, AverageMeter, \
     load_model, load_vocab, load_label_embeddings, get_labels_concepts_filename, calc_accuracy
-from datasets import S2SFeatureDataset, collate_fn
+from datasets.s2s_features import S2SFeatureDataset
+from datasets.s2s_videos import VideoFolder
+from datasets.transforms_video import *
 import mac
 
 
@@ -96,13 +99,62 @@ class Trainer():
             cudnn.benchmark = True
 
         # load dataset
-        self.dataset = S2SFeatureDataset(self.features_path, split='train')
+        if cfg.DATASET.DATA_TYPE == 'features':
+            self.dataset = S2SFeatureDataset(self.features_path, split='train')
+            self.dataset_val = S2SFeatureDataset(self.features_path, split='val')
+        elif cfg.DATASET.DATA_TYPE == 'videos':
+            # define augmentation pipeline
+            upscale_size_train = int(cfg.DATASET.INPUT_SPATIAL_SIZE * cfg.DATASET.UPSCALE_FACTOR_TRAIN)
+            upscale_size_eval = int(cfg.DATASET.INPUT_SPATIAL_SIZE * cfg.DATASET.UPSCALE_FACTOR_EVAL)
+            # Random crop videos during training
+            transform_train_pre = ComposeMix([
+                    [RandomRotationVideo(15), "vid"],
+                    [Scale(upscale_size_train), "img"],
+                    [RandomCropVideo(cfg.DATASET.INPUT_SPATIAL_SIZE), "vid"],
+                    ])
+
+            # Center crop videos during evaluation
+            transform_eval_pre = ComposeMix([
+                    [Scale(upscale_size_eval), "img"],
+                    [torchvision.transforms.ToPILImage(), "img"],
+                    [torchvision.transforms.CenterCrop(cfg.DATASET.INPUT_SPATIAL_SIZE), "img"],
+                    ])
+
+            # Transforms common to train and eval sets and applied after "pre" transforms
+            transform_post = ComposeMix([
+                    [torchvision.transforms.ToTensor(), "img"],
+                    [torchvision.transforms.Normalize(
+                            mean=[0.485, 0.456, 0.406],  # default values for imagenet
+                            std=[0.229, 0.224, 0.225]), "img"]
+                    ])
+            self.dataset = VideoFolder(
+                root=cfg.DATASET.DATA_FOLDER,
+                json_file_input=cfg.DATASET.TRAIN_JSON_PATH,
+                json_file_labels=cfg.DATASET.LABELS_JSON_PATH,
+                clip_size=cfg.DATASET.CLIP_SIZE,
+                nclips=cfg.DATASET.NCLIPS_TRAIN,
+                step_size=cfg.DATASET.STEP_SIZE_TRAIN,
+                is_val=False,
+                transform_pre=transform_train_pre,
+                transform_post=transform_post,
+            )
+            self.dataset_val = VideoFolder(
+                root=cfg.DATASET.DATA_FOLDER,
+                json_file_input=cfg.DATASET.VAL_JSON_PATH,
+                json_file_labels=cfg.DATASET.LABELS_JSON_PATH,
+                clip_size=cfg.DATASET.CLIP_SIZE,
+                nclips=cfg.DATASET.NCLIPS_VAL,
+                step_size=cfg.DATASET.STEP_SIZE_VAL,
+                is_val=True,
+                transform_pre=transform_eval_pre,
+                transform_post=transform_post,
+            )
+        else:
+            raise NotImplementedError('Invalid dataset data_type from config')
         # self.dataset = Subset(self.dataset, range(5))
+        # self.dataset_val = Subset(self.dataset_val, range(5))
         self.dataloader = DataLoader(dataset=self.dataset, batch_size=self.batch_size, shuffle=True,
                                        num_workers=cfg.WORKERS, drop_last=False)
-
-        self.dataset_val = S2SFeatureDataset(self.features_path, split='val')
-        # self.dataset_val = Subset(self.dataset_val, range(5))
         self.dataloader_val = DataLoader(dataset=self.dataset_val, batch_size=self.val_batch_size, drop_last=False,
                                          shuffle=False, num_workers=cfg.WORKERS)
 
