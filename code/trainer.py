@@ -86,9 +86,9 @@ class Trainer():
         self.max_epochs = cfg.TRAIN.MAX_EPOCHS
         self.snapshot_interval = cfg.TRAIN.SNAPSHOT_INTERVAL
 
-        s_gpus = cfg.GPU_ID.split(',')
-        self.gpus = [int(ix) for ix in s_gpus]
-        self.num_gpus = len(self.gpus)
+        # s_gpus = cfg.GPU_ID.split(',')
+        # self.gpus = [int(ix) for ix in s_gpus]
+        # self.num_gpus = len(self.gpus)
 
         self.batch_size = cfg.TRAIN.REAL_BATCH_SIZE
         effective_batch_size = cfg.TRAIN.EFFECTIVE_BATCH_SIZE
@@ -99,7 +99,7 @@ class Trainer():
         self.lr = cfg.TRAIN.LEARNING_RATE
 
         if cfg.CUDA:
-            torch.cuda.set_device(self.gpus[0])
+            # torch.cuda.set_device(self.gpus[0])
             cudnn.benchmark = True
 
         # load dataset

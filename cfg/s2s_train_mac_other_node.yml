@@ -1,6 +1,6 @@
 GPU_ID: '0'
 WORKERS: 1
-CUDA: TRUE
+CUDA: FALSE
 
 PREPROCESS:
     GLOVE_PATH: '/mnt/nas/GrimaRepo/aespinosa/glove.840B.300d.txt'
@@ -12,9 +12,8 @@ PREPROCESS:
 TRAIN:
     FLAG: True
     LEARNING_RATE: 0.0001
-    EFFECTIVE_BATCH_SIZE: 66
-    REAL_BATCH_SIZE: 22
-    VAL_BATCH_SIZE: 22
+    BATCH_SIZE: 2
+    VAL_BATCH_SIZE: 2
     MAX_EPOCHS: 25
     SNAPSHOT_INTERVAL: 5
     RESUME_SNAPSHOT_DIR: ""
@@ -27,18 +26,15 @@ TRAIN:
 
 MODEL:
     STEM: 'from_mac'
-    USE_BASELINE_BACKBONE: False
-    STEM_DROPOUT3D: True
-    STEM_BATCHNORM: True
     MODULE_DIM: 300
 
 DROPOUT:
-    READ_UNIT: 0.25
-    STEM: 0.25
+    READ_UNIT: 0.5
+    STEM: 0.5
 
 DATASET:
     DATA_TYPE: 'features'
-    FEATURES_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/s2s_feats_10percent.h5'
+    FEATURES_PATH: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2-1/s2s_feats_10percent.h5'
     # VIDEOS_DIR: 'data/20bn-something-something-v2-frames'
     # LABELS_JSON_PATH: 'data/something-something-v2-labels.json'
     # TRAIN_JSON_PATH: 'data/something-something-v2-train.json'
