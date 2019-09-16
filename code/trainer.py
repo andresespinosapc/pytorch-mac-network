@@ -90,7 +90,11 @@ class Trainer():
         self.gpus = [int(ix) for ix in s_gpus]
         self.num_gpus = len(self.gpus)
 
-        self.batch_size = cfg.TRAIN.BATCH_SIZE
+        self.batch_size = cfg.TRAIN.REAL_BATCH_SIZE
+        effective_batch_size = cfg.TRAIN.EFFECTIVE_BATCH_SIZE
+        if effective_batch_size % self.batch_size != 0:
+            raise ValueError('Effective batch size must be a multiple of real batch size')
+        self.iter_to_step = int(effective_batch_size / self.batch_size)
         self.val_batch_size = self.cfg.TRAIN.VAL_BATCH_SIZE
         self.lr = cfg.TRAIN.LEARNING_RATE
 
@@ -249,8 +253,9 @@ class Trainer():
         self.set_mode("train")
 
         pbar = tqdm(self.labeled_data)
+        self.optimizer.zero_grad()
 
-        for image, target in pbar:
+        for i, (image, target) in enumerate(pbar):
             ######################################################
             # (1) Prepare training data
             ######################################################
@@ -260,17 +265,17 @@ class Trainer():
             ############################
             # (2) Train Model
             ############################
-            self.optimizer.zero_grad()
-
             scores = self.model(image)
-            loss = self.loss_fn(scores, target)
+            loss = self.loss_fn(scores, target) / self.iter_to_step
             loss.backward()
+            if (i+1) % self.iter_to_step == 0:
+                if self.cfg.TRAIN.CLIP_GRADS:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.TRAIN.CLIP)
 
-            if self.cfg.TRAIN.CLIP_GRADS:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.TRAIN.CLIP)
+                self.optimizer.step()
+                self.weight_moving_average()
 
-            self.optimizer.step()
-            self.weight_moving_average()
+                self.optimizer.zero_grad()
 
             ############################
             # (3) Log Progress
