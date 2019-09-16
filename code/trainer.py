@@ -171,7 +171,12 @@ class Trainer():
             kb_shape = (72, 11, 11)
         self.model, self.model_ema = mac.load_MAC(cfg, kb_shape=kb_shape)
         self.weight_moving_average(alpha=0)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        if cfg.TRAIN.OPTIMIZER == 'adam':
+            self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        elif cfg.TRAIN.OPTIMIZER == 'sgd':
+            self.optimizer = optim.SGD(self.model.parameters(), lr=self.lr)
+        else:
+            raise NotImplementedError('Invalid train optimizer')
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='min', factor=.1, patience=5,
         )

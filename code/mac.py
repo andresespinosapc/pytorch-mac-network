@@ -327,7 +327,7 @@ class OutputUnit(nn.Module):
         super(OutputUnit, self).__init__()
 
         module_dim = cfg.MODEL.MODULE_DIM
-        self.memory_proj = nn.Linear(module_dim, wordvec_dim)
+        self.memory_proj = nn.Linear(module_dim, module_dim)
 
         # self.classifier = nn.Sequential(nn.Dropout(0.15),
         #                                 nn.Linear(module_dim * 2, module_dim),
@@ -360,7 +360,8 @@ class MACNetwork(nn.Module):
         self.concepts = nn.Parameter(torch.tensor(concepts), requires_grad=False)
         self.learned_embeds = learned_embeds
         if learned_embeds:
-            self.embed = nn.Embedding(vocab_size, wordvec_dim)
+            module_dim = cfg.MODEL.MODULE_DIM
+            self.embed = nn.Embedding(vocab_size, module_dim)
             self.embed_dropout = nn.Dropout(p=0.15)
 
         self.output_unit = OutputUnit()

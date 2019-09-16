@@ -121,7 +121,9 @@ def load_vocab(cfg):
 
 
 def get_labels_concepts_filename(cfg):
-    return cfg.DATASET.LABELS_CONCEPTS_PATH.format('{}_{}_{}'.format(
+    label_names_filename = cfg.PREPROCESS.LABEL_NAMES_PATH.split('.')[0].split('/')[-1]
+    return cfg.DATASET.LABELS_CONCEPTS_PATH.format('{}_{}_{}_{}'.format(
+        label_names_filename,
         'tok' if cfg.PREPROCESS.WORD_TOKENIZE else 'ntok',
         'stop' if cfg.PREPROCESS.REMOVE_STOPWORDS else 'nstop',
         'lem' if cfg.PREPROCESS.LEMMATIZE else 'nlem',
