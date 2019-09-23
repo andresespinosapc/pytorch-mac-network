@@ -12,8 +12,8 @@ PREPROCESS:
 TRAIN:
     FLAG: True
     LEARNING_RATE: 0.0001
-    BATCH_SIZE: 30
-    VAL_BATCH_SIZE: 30
+    BATCH_SIZE: 22
+    VAL_BATCH_SIZE: 2
     MAX_EPOCHS: 25
     SNAPSHOT_INTERVAL: 5
     RESUME_SNAPSHOT_DIR: ""
@@ -36,7 +36,7 @@ DROPOUT:
 
 DATASET:
     DATA_TYPE: 'features'
-    FEATURES_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/s2s_feats_10percent.h5'
+    FEATURES_PATH: 'data/feats.h5'
     # VIDEOS_DIR: 'data/20bn-something-something-v2-frames'
     # LABELS_JSON_PATH: 'data/something-something-v2-labels.json'
     # TRAIN_JSON_PATH: 'data/something-something-v2-train.json'

@@ -2,6 +2,7 @@ from __future__ import print_function
 
 from comet_ml import Experiment
 
+from pathlib import Path
 import sys
 import os
 import shutil
@@ -10,6 +11,7 @@ import pprint
 from tqdm import tqdm
 from easydict import EasyDict as edict
 import h5py
+import numpy as np
 
 from tensorboardX import SummaryWriter
 import torch.backends.cudnn as cudnn
@@ -19,12 +21,20 @@ from torch.autograd import Variable
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
 
-from utils import mkdir_p, save_model, load_model, load_vocab, load_label_embeddings
+from utils import mkdir_p, save_model, AverageMeter, \
+    load_model, load_vocab, load_label_embeddings, get_labels_concepts_filename, calc_accuracy
 from datasets import S2SFeatureDataset, collate_fn
 import mac
 
 
-experiment = Experiment(project_name='mac-actions', workspace='andresespinosapc') # , disabled=True, api_key=''
+comet_args = {
+    'project_name': 'mac-actions',
+    'workspace': 'andresespinosapc',
+}
+if int(os.environ.get('COMET_DISABLE')) == 1:
+    comet_args['disabled'] = True
+    comet_args['api_key'] = ''
+experiment = Experiment(**comet_args)
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -73,16 +83,16 @@ class Trainer():
         self.max_epochs = cfg.TRAIN.MAX_EPOCHS
         self.snapshot_interval = cfg.TRAIN.SNAPSHOT_INTERVAL
 
-        s_gpus = cfg.GPU_ID.split(',')
-        self.gpus = [int(ix) for ix in s_gpus]
-        self.num_gpus = len(self.gpus)
+        #s_gpus = cfg.GPU_ID.split(',')
+        #self.gpus = [int(ix) for ix in s_gpus]
+        #self.num_gpus = len(self.gpus)
 
         self.batch_size = cfg.TRAIN.BATCH_SIZE
         self.val_batch_size = self.cfg.TRAIN.VAL_BATCH_SIZE
         self.lr = cfg.TRAIN.LEARNING_RATE
 
         if cfg.CUDA:
-            torch.cuda.set_device(self.gpus[0])
+            #torch.cuda.set_device(self.gpus[0])
             cudnn.benchmark = True
 
         # load dataset
@@ -97,18 +107,18 @@ class Trainer():
                                          shuffle=False, num_workers=cfg.WORKERS)
 
         # load model
-        with h5py.File(cfg.DATASET.LABELS_CONCEPTS_PATH) as h5f:
-            self.labels_matrix = h5f['labels_matrix'][:]
-            self.concepts = h5f['concepts'][:]
         # self.vocab = load_vocab(cfg)
         # TEMP
-        self.vocab = { 'question_token_to_idx': [] }
-        self.model, self.model_ema = mac.load_MAC(cfg, self.vocab, self.labels_matrix, self.concepts)
+        if cfg.MODEL.STEM == 'from_baseline':
+            kb_shape = (72, 3, 3)
+        elif cfg.MODEL.STEM == 'from_mac':
+            kb_shape = (72, 11, 11)
+        self.model, self.model_ema = mac.load_MAC(cfg, kb_shape=kb_shape)
         self.weight_moving_average(alpha=0)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
-        # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        #     self.optimizer, mode='min', factor=.1, patience=5,
-        # )
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode='min', factor=.1, patience=5,
+        )
         if cfg.TRAIN.RESUME_SNAPSHOT_DIR != '':
             model_dir = os.path.join('data', cfg.TRAIN.RESUME_SNAPSHOT_DIR, 'Model')
             self.load_models(model_dir, cfg.TRAIN.RESUME_SNAPSHOT_ITER)
@@ -164,6 +174,9 @@ class Trainer():
         prefix = ""
         if is_best:
             prefix = "best_"
+            # Remove previous best checkpoint
+            for p in Path(self.model_dir).glob(prefix + '*'):
+                p.unlink()
         save_model(self.model, self.optimizer, iteration, self.model_dir, model_name=prefix+"model")
         save_model(self.model_ema, None, iteration, self.model_dir, model_name=prefix+"model_ema")
 
@@ -172,6 +185,10 @@ class Trainer():
         load_model(self.model_ema, None, iteration, model_dir, model_name='model_ema')
 
     def train_epoch(self, epoch):
+        loss_meter = AverageMeter()
+        top1_meter = AverageMeter()
+        top5_meter = AverageMeter()
+
         cfg = self.cfg
         avg_loss = 0
         train_accuracy = 0
@@ -179,9 +196,9 @@ class Trainer():
         self.labeled_data = iter(self.dataloader)
         self.set_mode("train")
 
-        dataset = tqdm(self.labeled_data)
+        pbar = tqdm(self.labeled_data)
 
-        for image, target in dataset:
+        for image, target in pbar:
             ######################################################
             # (1) Prepare training data
             ######################################################
@@ -208,48 +225,46 @@ class Trainer():
             ############################
             # (3) Log Progress
             ############################
-            correct = scores.detach().argmax(1) == target
-            accuracy = correct.sum().cpu().numpy() / target.shape[0]
-            metrics = {
-                'loss': loss.item(),
-                'accuracy': accuracy,
-            }
-            experiment.log_metrics(metrics)
+            top1, top5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+            loss_meter.update(loss.item(), target.shape[0])
+            top1_meter.update(top1, target.shape[0])
+            top5_meter.update(top5, target.shape[0])
 
-            if avg_loss == 0:
-                avg_loss = loss.item()
-                train_accuracy = accuracy
-            else:
-                avg_loss = 0.99 * avg_loss + 0.01 * loss.item()
-                train_accuracy = 0.99 * train_accuracy + 0.01 * accuracy
-            self.total_epoch_loss += loss.item()
+            # accuracy = top1
+            # if avg_loss == 0:
+            #     avg_loss = loss.item()
+            #     train_accuracy = accuracy
+            # else:
+            #     avg_loss = 0.99 * avg_loss + 0.01 * loss.item()
+            #     train_accuracy = 0.99 * train_accuracy + 0.01 * accuracy
+            # self.total_epoch_loss += loss.item()
 
-            dataset.set_description(
-                'Epoch: {}; Avg Loss: {:.5f}; Avg Train Acc: {:.5f}'.format(epoch + 1, avg_loss, train_accuracy)
+            pbar.set_description(
+                'Epoch: {}; Avg Loss: {:.5f}; Avg Top1: {:.5f}; Avg Top5: {:.5f}'.format(
+                    epoch + 1, loss_meter.avg, top1_meter.avg, top5_meter.avg
+                )
             )
 
         metrics = {
-            'avg_loss': avg_loss,
-            'epoch': epoch,
+            'avg_loss': loss_meter.avg,
+            'avg_top1': top1_meter.avg,
+            'avg_top5': top5_meter.avg,
         }
         experiment.log_metrics(metrics)
-        dict = {
-            "avg_loss": avg_loss,
-            "train_accuracy": train_accuracy
-        }
 
-        return dict
+        return metrics
 
     def train(self):
         cfg = self.cfg
         print("Start Training")
         for epoch in range(self.max_epochs):
             with experiment.train():
-                dict = self.train_epoch(epoch)
-            # self.scheduler.step(dict['avg_loss'])
+                metrics = self.train_epoch(epoch)
+            # self.scheduler.step(metrics['avg_loss'])
             with experiment.validate():
-                self.log_results(epoch, dict)
-            if cfg.TRAIN.EALRY_STOPPING:
+                self.log_results(epoch, metrics)
+            experiment.log_metric('epoch', epoch)
+            if cfg.TRAIN.EARLY_STOPPING:
                 if epoch - cfg.TRAIN.PATIENCE == self.previous_best_epoch:
                     break
 
@@ -258,17 +273,18 @@ class Trainer():
         print("Finished Training")
         print("Highest validation accuracy: {} at epoch {}")
 
-    def log_results(self, epoch, dict, max_eval_samples=None):
+    def log_results(self, epoch, train_metrics, max_eval_samples=None):
         epoch += 1
-        self.writer.add_scalar("avg_loss", dict["avg_loss"], epoch)
-        self.writer.add_scalar("train_accuracy", dict["train_accuracy"], epoch)
+        for k, v in train_metrics.items():
+            self.writer.add_scalar('train_{}'.format(k), v, epoch)
 
-        val_accuracy, val_accuracy_ema = self.calc_accuracy("validation", max_samples=max_eval_samples)
-        self.writer.add_scalar("val_accuracy_ema", val_accuracy_ema, epoch)
-        self.writer.add_scalar("val_accuracy", val_accuracy, epoch)
+        val_metrics = self.calc_metrics("validation", max_samples=max_eval_samples)
+        for k, v in val_metrics.items():
+            self.writer.add_scalar('val_{}'.format(k), v, epoch)
 
-        print("Epoch: {}\tVal Acc: {},\tVal Acc EMA: {},\tAvg Loss: {},\tLR: {}".
-              format(epoch, val_accuracy, val_accuracy_ema, dict["avg_loss"], self.lr))
+        val_accuracy, val_accuracy_ema = val_metrics['avg_top1'], val_metrics['avg_top1_ema']
+        print("Epoch: {}\tVal Top1: {},\tVal Top1 EMA: {},\tVal Avg Loss: {},\tLR: {}".
+              format(epoch, val_accuracy, val_accuracy_ema, val_metrics['avg_loss'], self.lr))
 
         if val_accuracy > self.previous_best_acc:
             self.previous_best_acc = val_accuracy
@@ -278,7 +294,7 @@ class Trainer():
         if epoch % self.snapshot_interval == 0:
             self.save_models(epoch)
 
-    def calc_accuracy(self, mode="train", max_samples=None):
+    def calc_metrics(self, mode="train", max_samples=None):
         self.set_mode("validation")
 
         if mode == "train":
@@ -295,8 +311,12 @@ class Trainer():
         else:
             max_iter = None
 
-        all_accuracies = []
-        all_accuracies_ema = []
+        loss_meter = AverageMeter()
+        top1_meter = AverageMeter()
+        top5_meter = AverageMeter()
+        loss_ema_meter = AverageMeter()
+        top1_ema_meter = AverageMeter()
+        top5_ema_meter = AverageMeter()
 
         for _iteration in range(total_iters):
             try:
@@ -312,18 +332,29 @@ class Trainer():
 
             with torch.no_grad():
                 scores = self.model(image)
+                loss = self.loss_fn(scores, target)
+                loss_meter.update(loss.item(), target.shape[0])
                 scores_ema = self.model_ema(image)
+                loss_ema = self.loss_fn(scores_ema, target)
+                loss_ema_meter.update(loss_ema.item(), target.shape[0])
 
-            correct_ema = scores_ema.detach().argmax(1) == target
-            accuracy_ema = correct_ema.sum().cpu().numpy() / target.shape[0]
-            all_accuracies_ema.append(accuracy_ema)
+            top1_ema, top5_ema = calc_accuracy(scores_ema.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+            top1_ema_meter.update(top1_ema, target.shape[0])
+            top5_ema_meter.update(top5_ema, target.shape[0])
 
-            correct = scores.detach().argmax(1) == target
-            accuracy = correct.sum().cpu().numpy() / target.shape[0]
-            all_accuracies.append(accuracy)
+            top1, top5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+            top1_meter.update(top1, target.shape[0])
+            top5_meter.update(top5, target.shape[0])
 
-        accuracy_ema = sum(all_accuracies_ema) / float(len(all_accuracies_ema))
-        accuracy = sum(all_accuracies) / float(len(all_accuracies))
-        experiment.log_metric('accuracy', accuracy)
+        self.scheduler.step(loss_meter.avg)
+        metrics = {
+            'avg_loss': loss_meter.avg,
+            'avg_top1': top1_meter.avg,
+            'avg_top5': top5_meter.avg,
+            'avg_loss_ema': loss_ema_meter.avg,
+            'avg_top1_ema': top1_ema_meter.avg,
+            'avg_top5_ema': top5_ema_meter.avg,
+        }
+        experiment.log_metrics(metrics)
 
-        return accuracy, accuracy_ema
+        return metrics
