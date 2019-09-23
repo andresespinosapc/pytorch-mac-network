@@ -361,7 +361,8 @@ class MACNetwork(nn.Module):
         self.learned_embeds = learned_embeds
 
         if cfg.MODEL.GLOVE_LINEAR:
-            self.linear_glove = nn.Linear(vocab_size, cfg.MODEL.MODULE_DIM)
+            module_dim = cfg.MODEL.MODULE_DIM
+            self.linear_glove = nn.Linear(300, module_dim)
             self.embed_dropout = nn.Dropout(p=0.15)
         else:
             if learned_embeds:
@@ -393,7 +394,7 @@ class MACNetwork(nn.Module):
     def forward(self, image):
         # get image, word, and sentence embeddings
         if self.cfg.MODEL.GLOVE_LINEAR:
-            concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1)
+            concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1, -1)
             concepts = self.embed_dropout(self.linear_glove(concepts))
         else:
             if self.learned_embeds:
