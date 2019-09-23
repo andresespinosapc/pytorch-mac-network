@@ -6,6 +6,7 @@ import torch.nn.init as init
 from torch.autograd import Variable
 
 from utils import *
+from models import model3D_1
 
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -245,14 +246,28 @@ class InputUnit(nn.Module):
         self.dim = module_dim
         self.cfg = cfg
 
+        baseline_model = model3D_1.Model(None)
+        if cfg.MODEL.USE_BASELINE_BACKBONE:
+            baseline_backbone = nn.Sequential(
+                baseline_model.block1,
+                baseline_model.block2,
+                baseline_model.block3,
+            )
+            for param in baseline_backbone.parameters():
+                param.requires_grad = False
+        else:
+            baseline_backbone = nn.Identity()
+
         if cfg.MODEL.STEM_DROPOUT3D:
             dropout_class = nn.Dropout3d
         else:
             dropout_class = nn.Dropout
+
         if cfg.MODEL.STEM_BATCHNORM:
             batchnorm_class = nn.BatchNorm3d
         else:
             batchnorm_class = nn.Identity
+
         if cfg.MODEL.STEM == 'from_baseline':
             self.stem = nn.Sequential(
                 nn.Conv3d(256, 256, kernel_size=(3, 3, 3), stride=1, dilation=(1, 1, 1), padding=(1, 1, 1)),
@@ -286,6 +301,8 @@ class InputUnit(nn.Module):
         else:
             raise NotImplementedError('Invalid model stem in configuration')
 
+        self.stem = nn.Sequential(baseline_backbone, self.stem)
+
         # self.encoder_embed = nn.Embedding(vocab_size, wordvec_dim)
         # self.embedding_dropout = nn.Dropout(p=0.15)
 
@@ -310,7 +327,7 @@ class OutputUnit(nn.Module):
         super(OutputUnit, self).__init__()
 
         module_dim = cfg.MODEL.MODULE_DIM
-        self.memory_proj = nn.Linear(module_dim, wordvec_dim)
+        self.memory_proj = nn.Linear(module_dim, module_dim)
 
         # self.classifier = nn.Sequential(nn.Dropout(0.15),
         #                                 nn.Linear(module_dim * 2, module_dim),
@@ -342,9 +359,15 @@ class MACNetwork(nn.Module):
         self.labels_matrix = nn.Parameter(torch.tensor(labels_matrix), requires_grad=False)
         self.concepts = nn.Parameter(torch.tensor(concepts), requires_grad=False)
         self.learned_embeds = learned_embeds
-        if learned_embeds:
-            self.embed = nn.Embedding(vocab_size, wordvec_dim)
+
+        if cfg.MODEL.GLOVE_LINEAR:
+            self.linear_glove = nn.Linear(vocab_size, cfg.MODEL.MODULE_DIM)
             self.embed_dropout = nn.Dropout(p=0.15)
+        else:
+            if learned_embeds:
+                module_dim = cfg.MODEL.MODULE_DIM
+                self.embed = nn.Embedding(vocab_size, module_dim)
+                self.embed_dropout = nn.Dropout(p=0.15)
 
         self.output_unit = OutputUnit()
 
@@ -369,11 +392,15 @@ class MACNetwork(nn.Module):
 
     def forward(self, image):
         # get image, word, and sentence embeddings
-        if self.learned_embeds:
+        if self.cfg.MODEL.GLOVE_LINEAR:
             concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1)
-            concepts = self.embed_dropout(self.embed(concepts))
+            concepts = self.embed_dropout(self.linear_glove(concepts))
         else:
-            concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1, -1)
+            if self.learned_embeds:
+                concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1)
+                concepts = self.embed_dropout(self.embed(concepts))
+            else:
+                concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1, -1)
         contextual_words, img = self.input_unit(image, concepts)
 
         # apply MacCell

@@ -20,10 +20,13 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.optim as optim
 from torch.utils.data import DataLoader, Subset
+import torchvision
 
 from utils import mkdir_p, save_model, AverageMeter, \
     load_model, load_vocab, load_label_embeddings, get_labels_concepts_filename, calc_accuracy
-from datasets import S2SFeatureDataset, collate_fn
+from datasets.s2s_features import S2SFeatureDataset
+from datasets.s2s_videos import VideoFolder
+from datasets.transforms_video import *
 import mac
 
 
@@ -83,26 +86,79 @@ class Trainer():
         self.max_epochs = cfg.TRAIN.MAX_EPOCHS
         self.snapshot_interval = cfg.TRAIN.SNAPSHOT_INTERVAL
 
-        #s_gpus = cfg.GPU_ID.split(',')
-        #self.gpus = [int(ix) for ix in s_gpus]
-        #self.num_gpus = len(self.gpus)
+        # s_gpus = cfg.GPU_ID.split(',')
+        # self.gpus = [int(ix) for ix in s_gpus]
+        # self.num_gpus = len(self.gpus)
 
-        self.batch_size = cfg.TRAIN.BATCH_SIZE
+        self.batch_size = cfg.TRAIN.REAL_BATCH_SIZE
+        effective_batch_size = cfg.TRAIN.EFFECTIVE_BATCH_SIZE
+        if effective_batch_size % self.batch_size != 0:
+            raise ValueError('Effective batch size must be a multiple of real batch size')
+        self.iter_to_step = int(effective_batch_size / self.batch_size)
         self.val_batch_size = self.cfg.TRAIN.VAL_BATCH_SIZE
         self.lr = cfg.TRAIN.LEARNING_RATE
 
         if cfg.CUDA:
-            #torch.cuda.set_device(self.gpus[0])
+            # torch.cuda.set_device(self.gpus[0])
             cudnn.benchmark = True
 
         # load dataset
-        self.dataset = S2SFeatureDataset(self.features_path, split='train')
+        if cfg.DATASET.DATA_TYPE == 'features':
+            self.dataset = S2SFeatureDataset(self.features_path, split='train')
+            self.dataset_val = S2SFeatureDataset(self.features_path, split='val')
+        elif cfg.DATASET.DATA_TYPE == 'videos':
+            # define augmentation pipeline
+            upscale_size_train = int(cfg.DATASET.INPUT_SPATIAL_SIZE * cfg.DATASET.UPSCALE_FACTOR_TRAIN)
+            upscale_size_eval = int(cfg.DATASET.INPUT_SPATIAL_SIZE * cfg.DATASET.UPSCALE_FACTOR_EVAL)
+            # Random crop videos during training
+            transform_train_pre = ComposeMix([
+                    [RandomRotationVideo(15), "vid"],
+                    [Scale(upscale_size_train), "img"],
+                    [RandomCropVideo(cfg.DATASET.INPUT_SPATIAL_SIZE), "vid"],
+                    ])
+
+            # Center crop videos during evaluation
+            transform_eval_pre = ComposeMix([
+                    [Scale(upscale_size_eval), "img"],
+                    [torchvision.transforms.ToPILImage(), "img"],
+                    [torchvision.transforms.CenterCrop(cfg.DATASET.INPUT_SPATIAL_SIZE), "img"],
+                    ])
+
+            # Transforms common to train and eval sets and applied after "pre" transforms
+            transform_post = ComposeMix([
+                    [torchvision.transforms.ToTensor(), "img"],
+                    [torchvision.transforms.Normalize(
+                            mean=[0.485, 0.456, 0.406],  # default values for imagenet
+                            std=[0.229, 0.224, 0.225]), "img"]
+                    ])
+            self.dataset = VideoFolder(
+                root=cfg.DATASET.DATA_FOLDER,
+                json_file_input=cfg.DATASET.TRAIN_JSON_PATH,
+                json_file_labels=cfg.DATASET.LABELS_JSON_PATH,
+                clip_size=cfg.DATASET.CLIP_SIZE,
+                nclips=cfg.DATASET.NCLIPS_TRAIN,
+                step_size=cfg.DATASET.STEP_SIZE_TRAIN,
+                is_val=False,
+                transform_pre=transform_train_pre,
+                transform_post=transform_post,
+            )
+            self.dataset_val = VideoFolder(
+                root=cfg.DATASET.DATA_FOLDER,
+                json_file_input=cfg.DATASET.VAL_JSON_PATH,
+                json_file_labels=cfg.DATASET.LABELS_JSON_PATH,
+                clip_size=cfg.DATASET.CLIP_SIZE,
+                nclips=cfg.DATASET.NCLIPS_VAL,
+                step_size=cfg.DATASET.STEP_SIZE_VAL,
+                is_val=True,
+                transform_pre=transform_eval_pre,
+                transform_post=transform_post,
+            )
+        else:
+            raise NotImplementedError('Invalid dataset data_type from config')
         # self.dataset = Subset(self.dataset, range(5))
+        # self.dataset_val = Subset(self.dataset_val, range(5))
         self.dataloader = DataLoader(dataset=self.dataset, batch_size=self.batch_size, shuffle=True,
                                        num_workers=cfg.WORKERS, drop_last=False)
-
-        self.dataset_val = S2SFeatureDataset(self.features_path, split='val')
-        # self.dataset_val = Subset(self.dataset_val, range(5))
         self.dataloader_val = DataLoader(dataset=self.dataset_val, batch_size=self.val_batch_size, drop_last=False,
                                          shuffle=False, num_workers=cfg.WORKERS)
 
@@ -115,7 +171,17 @@ class Trainer():
             kb_shape = (72, 11, 11)
         self.model, self.model_ema = mac.load_MAC(cfg, kb_shape=kb_shape)
         self.weight_moving_average(alpha=0)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        if cfg.TRAIN.OPTIMIZER == 'adam':
+            self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        elif cfg.TRAIN.OPTIMIZER == 'sgd':
+            self.optimizer = optim.SGD(
+                self.model.parameters(),
+                lr=self.lr,
+                momentum=cfg.TRAIN.MOMENTUM,
+                weight_decay=cfg.TRAIN.WEIGHT_DECAY,
+            )
+        else:
+            raise NotImplementedError('Invalid train optimizer')
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             self.optimizer, mode='min', factor=.1, patience=5,
         )
@@ -197,8 +263,9 @@ class Trainer():
         self.set_mode("train")
 
         pbar = tqdm(self.labeled_data)
-
-        for image, target in pbar:
+        self.optimizer.zero_grad()
+        loss = 0
+        for i, (image, target) in enumerate(pbar):
             ######################################################
             # (1) Prepare training data
             ######################################################
@@ -208,19 +275,20 @@ class Trainer():
             ############################
             # (2) Train Model
             ############################
-            self.optimizer.zero_grad()
-
             scores = self.model(image)
-            print(scores.size())
-            print(target.size())
-            loss = self.loss_fn(scores, target)
-            loss.backward()
+            #loss = self.loss_fn(scores, target)
+            #loss.backward()
+            loss += self.loss_fn(scores, target) / self.iter_to_step
+            if (i+1) % self.iter_to_step == 0:
+                loss.backward()
+                if self.cfg.TRAIN.CLIP_GRADS:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.TRAIN.CLIP)
 
-            if self.cfg.TRAIN.CLIP_GRADS:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.TRAIN.CLIP)
+                self.optimizer.step()
+                self.weight_moving_average()
 
-            self.optimizer.step()
-            self.weight_moving_average()
+                self.optimizer.zero_grad()
+                loss = 0
 
             ############################
             # (3) Log Progress

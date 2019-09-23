@@ -27,7 +27,7 @@ TRAIN:
 
 MODEL:
     STEM: 'from_mac'
-    USE_BASELINE_BACKBONE: False
+    USE_BASELINE_BACKBONE: True
     STEM_DROPOUT3D: True
     STEM_BATCHNORM: True
     MODULE_DIM: 300
@@ -37,11 +37,11 @@ DROPOUT:
     STEM: 0.25
 
 DATASET:
-    DATA_TYPE: 'features'
+    DATA_TYPE: 'videos'
     FEATURES_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/s2s_feats_10percent.h5'
-    # VIDEOS_DIR: 'data/20bn-something-something-v2-frames'
-    # LABELS_JSON_PATH: 'data/something-something-v2-labels.json'
-    # TRAIN_JSON_PATH: 'data/something-something-v2-train.json'
-    # VAL_JSON_PATH: 'data/something-something-v2-validation.json'
+    DATA_FOLDER: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/20bn-something-something-v2'
+    TRAIN_JSON_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/something-something-v2-train.json'
+    VAL_JSON_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/something-something-v2-validation.json'
+    LABELS_JSON_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/something-something-v2-labels.json'
     LABELS_CONCEPTS_PATH: 'data/lab_con_{}.h5'
     LEARNED_EMBEDDINGS: False
