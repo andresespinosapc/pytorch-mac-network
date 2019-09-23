@@ -359,10 +359,15 @@ class MACNetwork(nn.Module):
         self.labels_matrix = nn.Parameter(torch.tensor(labels_matrix), requires_grad=False)
         self.concepts = nn.Parameter(torch.tensor(concepts), requires_grad=False)
         self.learned_embeds = learned_embeds
-        if learned_embeds:
-            module_dim = cfg.MODEL.MODULE_DIM
-            self.embed = nn.Embedding(vocab_size, module_dim)
+
+        if cfg.MODEL.GLOVE_LINEAR:
+            self.linear_glove = nn.Linear(vocab_size, cfg.MODEL.MODULE_DIM)
             self.embed_dropout = nn.Dropout(p=0.15)
+        else:
+            if learned_embeds:
+                module_dim = cfg.MODEL.MODULE_DIM
+                self.embed = nn.Embedding(vocab_size, module_dim)
+                self.embed_dropout = nn.Dropout(p=0.15)
 
         self.output_unit = OutputUnit()
 
@@ -387,11 +392,15 @@ class MACNetwork(nn.Module):
 
     def forward(self, image):
         # get image, word, and sentence embeddings
-        if self.learned_embeds:
+        if self.cfg.MODEL.GLOVE_LINEAR:
             concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1)
-            concepts = self.embed_dropout(self.embed(concepts))
+            concepts = self.embed_dropout(self.linear_glove(concepts))
         else:
-            concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1, -1)
+            if self.learned_embeds:
+                concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1)
+                concepts = self.embed_dropout(self.embed(concepts))
+            else:
+                concepts = self.concepts.unsqueeze(0).expand(image.size(0), -1, -1)
         contextual_words, img = self.input_unit(image, concepts)
 
         # apply MacCell

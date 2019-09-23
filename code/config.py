@@ -51,6 +51,7 @@ __C.MODEL.STEM = 'from_mac'
 __C.MODEL.STEM_DROPOUT3D = True
 __C.MODEL.STEM_BATCHNORM = True
 __C.MODEL.MODULE_DIM = 512
+__C.MODEL.GLOVE_LINEAR = True
 __C.MODEL = dict(__C.MODEL)
 
 __C.DROPOUT = edict()
