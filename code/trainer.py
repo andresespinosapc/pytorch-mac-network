@@ -174,7 +174,12 @@ class Trainer():
         if cfg.TRAIN.OPTIMIZER == 'adam':
             self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
         elif cfg.TRAIN.OPTIMIZER == 'sgd':
-            self.optimizer = optim.SGD(self.model.parameters(), lr=self.lr)
+            self.optimizer = optim.SGD(
+                self.model.parameters(),
+                lr=self.lr,
+                momentum=cfg.TRAIN.MOMENTUM,
+                weight_decay=cfg.TRAIN.WEIGHT_DECAY,
+            )
         else:
             raise NotImplementedError('Invalid train optimizer')
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -259,7 +264,7 @@ class Trainer():
 
         pbar = tqdm(self.labeled_data)
         self.optimizer.zero_grad()
-
+        loss = 0
         for i, (image, target) in enumerate(pbar):
             ######################################################
             # (1) Prepare training data
@@ -271,9 +276,9 @@ class Trainer():
             # (2) Train Model
             ############################
             scores = self.model(image)
-            loss = self.loss_fn(scores, target) / self.iter_to_step
-            loss.backward()
+            loss += self.loss_fn(scores, target) / self.iter_to_step
             if (i+1) % self.iter_to_step == 0:
+                loss.backward()
                 if self.cfg.TRAIN.CLIP_GRADS:
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.cfg.TRAIN.CLIP)
 
@@ -281,6 +286,7 @@ class Trainer():
                 self.weight_moving_average()
 
                 self.optimizer.zero_grad()
+                loss = 0
 
             ############################
             # (3) Log Progress
