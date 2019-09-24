@@ -34,7 +34,7 @@ comet_args = {
     'project_name': 'mac-actions',
     'workspace': 'andresespinosapc',
 }
-if int(os.environ.get('COMET_DISABLE')) == 1:
+if os.environ.get('COMET_DISABLE'):
     comet_args['disabled'] = True
     comet_args['api_key'] = ''
 experiment = Experiment(**comet_args)
