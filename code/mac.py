@@ -327,15 +327,18 @@ class OutputUnit(nn.Module):
         super(OutputUnit, self).__init__()
 
         module_dim = cfg.MODEL.MODULE_DIM
-        self.memory_proj = nn.Linear(module_dim, module_dim)
+        if cfg.DATASET.LEARNED_EMBEDDINGS:
+            self.memory_proj = nn.Linear(module_dim, module_dim)
+            self.attn = nn.Linear(module_dim, 1)
+        else:
+            self.memory_proj = nn.Linear(module_dim, wordvec_dim)
+            self.attn = nn.Linear(wordvec_dim, 1)
 
         # self.classifier = nn.Sequential(nn.Dropout(0.15),
         #                                 nn.Linear(module_dim * 2, module_dim),
         #                                 nn.ELU(),
         #                                 nn.Dropout(0.15),
         #                                 nn.Linear(module_dim, num_answers))
-
-        self.attn = nn.Linear(module_dim, 1)
 
     def forward(self, memory, labels_matrix):
         # apply classifier to output of MacCell and the question
@@ -362,7 +365,7 @@ class MACNetwork(nn.Module):
 
         if cfg.MODEL.GLOVE_LINEAR:
             module_dim = cfg.MODEL.MODULE_DIM
-            self.linear_glove = nn.Linear(300, module_dim)
+            self.linear_glove = nn.Linear(wordvec_dim, module_dim)
             self.embed_dropout = nn.Dropout(p=0.15)
         else:
             if learned_embeds:
