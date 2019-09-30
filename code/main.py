@@ -12,6 +12,7 @@ import datetime
 import dateutil
 import dateutil.tz
 import shutil
+import numpy as np
 
 dir_path = (os.path.abspath(os.path.join(os.path.realpath(__file__), './.')))
 sys.path.append(dir_path)
@@ -59,6 +60,7 @@ if __name__ == "__main__":
     if args.manualSeed is None:
         args.manualSeed = random.randint(1, 10000)
     random.seed(args.manualSeed)
+    np.random.seed(args.manualSeed)
     torch.manual_seed(args.manualSeed)
     if cfg.CUDA:
         torch.cuda.manual_seed_all(args.manualSeed)
