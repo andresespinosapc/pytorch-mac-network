@@ -254,3 +254,15 @@ def calc_accuracy(output, target, topk=(1,)):
         correct_k = correct[:k].view(-1).float().sum(0)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
+
+def remove_module_from_checkpoint_state_dict(state_dict):
+    """
+    Removes the prefix `module` from weight names that gets added by
+    torch.nn.DataParallel()
+    """
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        name = k[7:]  # remove `module.`
+        new_state_dict[name] = v
+    return new_state_dict

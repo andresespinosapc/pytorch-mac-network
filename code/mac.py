@@ -6,6 +6,7 @@ import torch.nn.init as init
 from torch.autograd import Variable
 
 from utils import *
+from models.multi_column import MultiColumn
 from models import model3D_1
 
 
@@ -246,8 +247,15 @@ class InputUnit(nn.Module):
         self.dim = module_dim
         self.cfg = cfg
 
-        baseline_model = model3D_1.Model(None)
         if cfg.MODEL.USE_BASELINE_BACKBONE:
+            baseline_model_mc = MultiColumn(174, model3D_1.Model, 512)
+            checkpoint_path = cfg.MODEL.BASELINE_BACKBONE_CHECKPOINT
+            if checkpoint_path:
+                checkpoint = torch.load(checkpoint_path, map_location=device)
+                checkpoint['state_dict'] = remove_module_from_checkpoint_state_dict(
+                                                            checkpoint['state_dict'])
+                baseline_model_mc.load_state_dict(checkpoint['state_dict'])
+            baseline_model = baseline_model_mc.conv_column
             baseline_backbone = nn.Sequential(
                 baseline_model.block1,
                 baseline_model.block2,
