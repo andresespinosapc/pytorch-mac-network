@@ -42,9 +42,9 @@ def load_MAC(cfg, kb_shape=(72, 11, 11)):
     for param in model_ema.parameters():
         param.requires_grad = False
 
-    model.to(device)
-    model_ema.to(device)
-    concepts_per_label.to(device)
+    model = model.to(device)
+    model_ema = model_ema.to(device)
+    concepts_per_label = concepts_per_label.to(device)
     model.train()
     return model, model_ema, concepts_per_label
 
@@ -231,7 +231,7 @@ class MACUnit(nn.Module):
         batch_size = context.size(0)
 
         if self.predict_concepts:
-            concepts_out = torch.zeros((self.max_step, batch_size, self.concepts_size))
+            concepts_out = torch.zeros((self.max_step, batch_size, self.concepts_size)).to(context.get_device())
 
         if self.save_attns:
             self.concept_attns = []
