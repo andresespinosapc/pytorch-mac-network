@@ -76,10 +76,16 @@ if __name__ == '__main__':
     if args.cfg_file is not None:
         cfg_from_file(args.cfg_file)
 
-    labels_matrix, concepts, concept_words = load_label_embeddings(cfg, get_concept_words=True)
-    print('Concept words:\n')
-    for word in concept_words:
-        print(word)
-    with h5py.File(get_labels_concepts_filename(cfg), 'w') as h5f:
+    labels_matrix, concepts, concept_words, concepts_per_label = load_label_embeddings(
+        cfg,
+        get_concept_words=True,
+        get_concepts_per_label=True
+    )
+    labels_concepts_filename, concept_names_filename = get_labels_concepts_filename(cfg, get_concept_names_filename=True)
+    with open(concept_names_filename, 'w') as f:
+        for word in concept_words:
+            f.write('{}\n'.format(word))
+    with h5py.File(labels_concepts_filename, 'w') as h5f:
         h5f.create_dataset('labels_matrix', data=labels_matrix)
+        h5f.create_dataset('concepts_per_label', data=concepts_per_label)
         h5f.create_dataset('concepts', data=concepts)

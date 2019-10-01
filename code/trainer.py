@@ -169,7 +169,7 @@ class Trainer():
             kb_shape = (72, 3, 3)
         elif cfg.MODEL.STEM == 'from_mac':
             kb_shape = (72, 11, 11)
-        self.model, self.model_ema = mac.load_MAC(cfg, kb_shape=kb_shape)
+        self.model, self.model_ema, self.concepts_per_label = mac.load_MAC(cfg, kb_shape=kb_shape)
         self.weight_moving_average(alpha=0)
         if cfg.TRAIN.OPTIMIZER == 'adam':
             self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
@@ -197,6 +197,7 @@ class Trainer():
 
         self.print_info()
         self.loss_fn = torch.nn.CrossEntropyLoss().to(device)
+        self.concept_loss_fn = torch.nn.BCELoss().to(device)
 
     def print_info(self):
         print('Using config:')
@@ -275,8 +276,16 @@ class Trainer():
             ############################
             # (2) Train Model
             ############################
-            scores = self.model(image)
-            loss = self.loss_fn(scores, target) / self.iter_to_step
+            scores, concepts_out = self.model(image)
+
+            loss = self.loss_fn(scores, target)
+
+            if cfg.MODEL.CONCEPT_AUX_TASK:
+                concepts_target = self.concepts_per_label[target]
+                loss += self.concept_loss_fn(concepts_out, concepts_target) * cfg.MODEL.CONCEPT_AUX_WEIGHT
+
+            loss /= self.iter_to_step
+
             loss.backward()
             if (i+1) % self.iter_to_step == 0:
                 if self.cfg.TRAIN.CLIP_GRADS:

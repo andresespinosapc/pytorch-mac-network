@@ -1,6 +1,7 @@
 import h5py
 
 import torch
+import torch.nn.functional as F
 import torch.nn as nn
 import torch.nn.init as init
 from torch.autograd import Variable
@@ -15,16 +16,21 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 def load_MAC(cfg, kb_shape=(72, 11, 11)):
     learned_embeds = cfg.DATASET.LEARNED_EMBEDDINGS
     vocab_size = None
+    concepts_per_label = None
     if learned_embeds:
+        if cfg.MODEL.CONCEPT_AUX_TASK:
+            raise NotImplementedError('Cannot use learned embeddings and concept aux task at the same time')
         labels_matrix, concepts, vocab_size = load_label_word_ids(cfg)
     else:
         with h5py.File(get_labels_concepts_filename(cfg)) as h5f:
             labels_matrix = h5f['labels_matrix'][:]
+            concepts_per_label = torch.tensor(h5f['concepts_per_label'][:])
             concepts = h5f['concepts'][:]
 
     kwargs = {
         'vocab_size': vocab_size,
         'max_step': cfg.TRAIN.MAX_STEPS,
+        'predict_concepts': cfg.MODEL.CONCEPT_AUX_TASK,
         'labels_matrix': labels_matrix,
         'concepts': concepts,
         'kb_shape': kb_shape,
@@ -38,8 +44,9 @@ def load_MAC(cfg, kb_shape=(72, 11, 11)):
 
     model.to(device)
     model_ema.to(device)
+    concepts_per_label.to(device)
     model.train()
-    return model, model_ema
+    return model, model_ema, concepts_per_label
 
 
 class ControlUnit(nn.Module):
@@ -182,10 +189,15 @@ class WriteUnit(nn.Module):
 
 
 class MACUnit(nn.Module):
-    def __init__(self, cfg, max_step=4, concepts_size=None, kb_shape=None):
+    def __init__(self, cfg, max_step=4, concepts_size=None, kb_shape=None, predict_concepts=False):
         super().__init__()
         self.cfg = cfg
         module_dim = cfg.MODEL.MODULE_DIM
+        self.module_dim = module_dim
+        self.predict_concepts = predict_concepts
+        if predict_concepts:
+            self.concept_clf = nn.Linear(module_dim, concepts_size)
+
         self.control = ControlUnit(cfg, module_dim, max_step)
         self.read = ReadUnit(cfg, module_dim)
         self.write = WriteUnit(cfg, module_dim)
@@ -193,9 +205,9 @@ class MACUnit(nn.Module):
         self.initial_memory = nn.Parameter(torch.zeros(1, module_dim))
         self.initial_control = nn.Parameter(torch.zeros(1, module_dim))
 
-        self.module_dim = module_dim
         self.max_step = max_step
 
+        self.concepts_size = concepts_size
         if concepts_size is not None:
             self.save_attns = True
         else:
@@ -216,16 +228,22 @@ class MACUnit(nn.Module):
         return initial_control, initial_memory, memDpMask
 
     def forward(self, context, knowledge):
+        batch_size = context.size(0)
+
+        if self.predict_concepts:
+            concepts_out = torch.zeros((self.max_step, batch_size, self.concepts_size))
+
         if self.save_attns:
             self.concept_attns = []
             self.kb_attns = []
 
-        batch_size = context.size(0)
         control, memory, memDpMask = self.zero_state(batch_size)
 
         for i in range(self.max_step):
             # control unit
             control, attn = self.control(control, memory, context, i)
+            if self.predict_concepts:
+                concepts_out[i] = F.softmax(self.concept_clf(control), dim=1)
             if self.save_attns:
                 self.concept_attns.append(attn.squeeze(2).detach().cpu().numpy())
             # read unit
@@ -236,7 +254,12 @@ class MACUnit(nn.Module):
             # write unit
             memory = self.write(memory, info)
 
-        return memory
+        if self.predict_concepts:
+            concepts_out = concepts_out.max(dim=0).values
+
+            return memory, concepts_out
+        else:
+            return memory, None
 
 
 class InputUnit(nn.Module):
@@ -360,10 +383,16 @@ class OutputUnit(nn.Module):
 
 
 class MACNetwork(nn.Module):
-    def __init__(self, cfg, max_step, labels_matrix, concepts, vocab_size=None, wordvec_dim=300, learned_embeds=False, kb_shape=(0, 0, 0)):
+    def __init__(
+        self, cfg, max_step, labels_matrix, concepts,
+        vocab_size=None, wordvec_dim=300,
+        learned_embeds=False, kb_shape=(0, 0, 0),
+        predict_concepts=False,
+    ):
         super().__init__()
 
         self.cfg = cfg
+        self.predict_concepts = predict_concepts
 
         self.input_unit = InputUnit(cfg)
 
@@ -383,7 +412,10 @@ class MACNetwork(nn.Module):
 
         self.output_unit = OutputUnit()
 
-        self.mac = MACUnit(cfg, max_step=max_step, concepts_size=concepts.shape[0], kb_shape=kb_shape)
+        self.mac = MACUnit(
+            cfg, max_step=max_step, concepts_size=concepts.shape[0], kb_shape=kb_shape,
+            predict_concepts=predict_concepts,
+        )
 
         init_modules(self.modules(), w_init=self.cfg.TRAIN.WEIGHT_INIT)
         if learned_embeds:
@@ -416,7 +448,7 @@ class MACNetwork(nn.Module):
         contextual_words, img = self.input_unit(image, concepts)
 
         # apply MacCell
-        memory = self.mac(contextual_words, img)
+        memory, concepts_out = self.mac(contextual_words, img)
 
         # get classification
         if self.learned_embeds:
@@ -427,7 +459,7 @@ class MACNetwork(nn.Module):
             labels_matrix = self.labels_matrix.unsqueeze(0).expand(memory.size(0), -1, -1)
         out = self.output_unit(memory, labels_matrix)
 
-        return out
+        return out, concepts_out
 
 if __name__ == '__main__':
     from types import SimpleNamespace

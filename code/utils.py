@@ -120,14 +120,20 @@ def load_vocab(cfg):
     return vocab
 
 
-def get_labels_concepts_filename(cfg):
+def get_labels_concepts_filename(cfg, get_concept_names_filename=False):
     label_names_filename = cfg.PREPROCESS.LABEL_NAMES_PATH.split('.')[0].split('/')[-1]
-    return cfg.DATASET.LABELS_CONCEPTS_PATH.format('{}_{}_{}_{}'.format(
+    suffix = '{}_{}_{}_{}'.format(
         label_names_filename,
         'tok' if cfg.PREPROCESS.WORD_TOKENIZE else 'ntok',
         'stop' if cfg.PREPROCESS.REMOVE_STOPWORDS else 'nstop',
         'lem' if cfg.PREPROCESS.LEMMATIZE else 'nlem',
-    ))
+    )
+    labels_concepts_filename = os.path.join(cfg.DATASET.LABELS_CONCEPTS_DIR, 'lab_con_' + suffix)
+    if get_concept_names_filename:
+        concept_names_filename = os.path.join(cfg.DATASET.LABELS_CONCEPTS_DIR, 'concept_names_' + suffix)
+        return labels_concepts_filename, concept_names_filename
+    else:
+        return labels_concepts_filename
 
 
 def preprocess_sentence(cfg, sentence):
@@ -179,7 +185,7 @@ def load_label_word_ids(cfg):
     return labels_matrix, concepts, vocab_size
 
 
-def load_label_embeddings(cfg, get_concept_words=False):
+def load_label_embeddings(cfg, get_concept_words=False, get_concepts_per_label=False):
     def invert_dict(d):
         return {v: k for k, v in d.items()}
 
@@ -193,39 +199,51 @@ def load_label_embeddings(cfg, get_concept_words=False):
 
     # Load labels list
     labels = [line.strip() for line in open(cfg.PREPROCESS.LABEL_NAMES_PATH)]
+    # Map labels to words
+    labels = list(map(lambda label: preprocess_sentence(cfg, label), labels))
     embed_dim = next(iter(word_to_vec.values())).shape[0]
 
     # Create labels matrix
-    label_words = []
+    concept_words = []
     labels_matrix = np.empty((len(labels), embed_dim), dtype=np.float32)
-    for i, label in enumerate(labels):
-        words = preprocess_sentence(cfg, label)
+    for i, words in enumerate(labels):
         embed_sum = np.zeros(embed_dim)
         n_embed = 0
         for word in words:
-            if word not in label_words:
-                label_words.append(word)
             if word not in ['something']:
                 n_embed += 1
                 vec = word_to_vec.get(word)
                 if vec is not None:
                     embed_sum += vec
+                    if word not in concept_words:
+                        concept_words.append(word)
         labels_matrix[i] = embed_sum / n_embed        
 
     # Create concepts
     concepts = []
-    concept_words = []
-    for word in label_words:
+    for word in concept_words:
         vec = word_to_vec.get(word)
-        if vec is not None:
-            concepts.append(vec)
-            concept_words.append(word)
+        concepts.append(vec)
     concepts = np.array(concepts, dtype=np.float32)
 
+    results = [labels_matrix, concepts]
+
     if get_concept_words:
-        return labels_matrix, concepts, concept_words
-    else:
-        return labels_matrix, concepts
+        results.append(concept_words)
+
+    if get_concepts_per_label:
+        # Create a list of multi-hot concepts for each label
+        concept_word_to_idx = {}
+        for i, concept_word in enumerate(concept_words):
+            concept_word_to_idx[concept_word] = i
+        concepts_per_label = np.zeros((len(labels), len(concept_words)), dtype=np.float32)
+        for i, words in enumerate(labels):
+            concepts_idxs = list(filter(lambda x: x is not None, (concept_word_to_idx.get(word) for word in words)))
+            concepts_per_label[i, concepts_idxs] = 1
+
+        results.append(concepts_per_label)
+
+    return results
 
 
 def generateVarDpMask(shape, keepProb):
