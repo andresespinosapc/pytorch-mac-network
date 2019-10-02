@@ -3,6 +3,7 @@ import os
 
 import numpy as np
 import torch
+import cv2
 
 from src.i3dpt import I3D
 
@@ -21,6 +22,8 @@ class DataSet(object):
         self.transform = None
         self.target_transform = None
 
+        self.getPaths()
+
     def getPaths(self):
         with open(os.path.join(self.path,'val_videofolder.txt')) as f: 
             for line in f: 
@@ -30,7 +33,7 @@ class DataSet(object):
                 self.target.append(int(target))
 
         for elem in os.listdir(os.path.join(self.path, 'val')):
-            video_elem = [ v for v in os.listdir(os.path.join(self.path, 'val', elem)) ]
+            video_elem = [ v.split('.')[0] for v in os.listdir(os.path.join(self.path, 'val', elem)) ]
             for i,video in enumerate(self.data):
                 if video in video_elem:
                     self.name_clss[self.target[i]] = elem
@@ -39,7 +42,7 @@ class DataSet(object):
     def __getitem__(self, index):
         video, target = self.data[index], self.target[index]
 
-        sample = self.load_video(os.path.join(self.path,'val',self.name_clss[target],video))
+        sample = self.load_video(os.path.join(self.path,'val',self.name_clss[target],video+'.mp4'))
         if self.transform is not None:
             sample = self.transform(sample)
         if self.target_transform is not None:
@@ -52,9 +55,9 @@ class DataSet(object):
 
     def sample_frame(self, frames):
         s_frames = np.random.uniform(0, len(frames), self.num_frames)
+        return torch.tensor(frames)[s_frames]
 
-
-    def load_video(path, resize=(224, 224)):
+    def load_video(self, path, resize=(224, 224)):
         cap = cv2.VideoCapture(path)
         frames = []
         try:
@@ -62,7 +65,6 @@ class DataSet(object):
                 ret, frame = cap.read()
                 if not ret:
                     break
-                frame = crop_center_square(frame)
                 frame = cv2.resize(frame, resize)
                 frame = frame[:, :, [2, 1, 0]]
                 frames.append(frame)
@@ -72,7 +74,7 @@ class DataSet(object):
         finally:
             cap.release()
         frames = self.sample_frame(frames)
-        return torch.stack(frames) / 255.0
+        return frames
 
 def run_demo(args):
     
@@ -94,8 +96,9 @@ def run_demo(args):
 
 
     dataset = DataSet('/mnt/nas/GrimaRepo/datasets/kinetics-400/', 16)
-    loader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=False)
+    print(dataset[10])
+    #loader = torch.utils.data.DataLoader(
+    #    dataset, batch_size=batch_size, shuffle=False)
 
 
     # i3d_rgb = I3D(num_classes=400, modality='rgb')
@@ -120,4 +123,5 @@ if __name__ == "__main__":
         type=str,
         default='model/model_rgb.pth',
         help='Path to rgb model state_dict')
+    args = parser.parse_args()
     run_demo(args)
