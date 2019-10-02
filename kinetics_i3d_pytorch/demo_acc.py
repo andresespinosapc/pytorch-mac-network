@@ -55,7 +55,7 @@ class DataSet(object):
 
     def sample_frame(self, frames):
         s_frames = np.random.uniform(0, len(frames), self.num_frames)
-        return torch.tensor(frames)[s_frames]
+        return torch.tensor(frames, dtype=torch.float64 )[s_frames]
 
     def load_video(self, path, resize=(224, 224)):
         cap = cv2.VideoCapture(path)
@@ -74,7 +74,7 @@ class DataSet(object):
         finally:
             cap.release()
         frames = self.sample_frame(frames)
-        return frames
+        return frames / 255
 
 def run_demo(args):
     
