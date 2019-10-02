@@ -9,6 +9,7 @@ from src.i3dpt import I3D
 
 rgb_pt_checkpoint = 'model/model_rgb.pth'
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class DataSet(object):
     def __init__(self, path, frames):
@@ -76,9 +77,18 @@ class DataSet(object):
         frames = self.sample_frame(frames)
         return frames / 255
 
+
+def test(model, data_loader):
+    model.eval()
+    correct = 0
+    for input, target in data_loader:
+        input, target = input.to(device), target.to(device)
+        output = model(input)
+        correct += (F.softmax(output, dim=1).max(dim=1)[1] == target).data.sum()
+    return correct.item() / len(data_loader.dataset)
+
 def run_demo(args):
     
-
     def get_scores(sample, model):
         sample_var = torch.autograd.Variable(torch.from_numpy(sample).cuda())
         out_var, out_logit = model(sample_var)
@@ -96,15 +106,16 @@ def run_demo(args):
 
 
     dataset = DataSet('/mnt/nas/GrimaRepo/datasets/kinetics-400/', 16)
-    print(dataset[10])
-    #loader = torch.utils.data.DataLoader(
-    #    dataset, batch_size=batch_size, shuffle=False)
+    loader = torch.utils.data.DataLoader(
+        dataset, batch_size=batch_size, shuffle=False)
 
 
-    # i3d_rgb = I3D(num_classes=400, modality='rgb')
-    # i3d_rgb.eval()
-    # i3d_rgb.load_state_dict(torch.load(args.rgb_weights_path))
-    # i3d_rgb.cuda()
+    i3d_rgb = I3D(num_classes=400, modality='rgb')
+    i3d_rgb.eval()
+    i3d_rgb.load_state_dict(torch.load(args.rgb_weights_path))
+    i3d_rgb.to(device)
+
+    print(test(i3d_rgb, loader))
 
     # rgb_sample = np.load(args.rgb_sample_path).transpose(0, 4, 1, 2, 3)
     # out_rgb_logit = get_scores(rgb_sample, i3d_rgb)
