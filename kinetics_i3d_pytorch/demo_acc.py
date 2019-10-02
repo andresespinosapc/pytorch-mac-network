@@ -9,7 +9,7 @@ from src.i3dpt import I3D
 
 rgb_pt_checkpoint = 'model/model_rgb.pth'
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 class DataSet(object):
     def __init__(self, path, frames):
@@ -56,7 +56,7 @@ class DataSet(object):
 
     def sample_frame(self, frames):
         s_frames = np.random.uniform(0, len(frames), self.num_frames)
-        return torch.tensor(frames)[s_frames]
+        return torch.tensor(frames, dtype=torch.float64)[s_frames]
 
     def load_video(self, path, resize=(224, 224)):
         cap = cv2.VideoCapture(path)
@@ -75,7 +75,7 @@ class DataSet(object):
         finally:
             cap.release()
         frames = self.sample_frame(frames)
-        return frames
+        return (frames /255).permute(3,1,2,0) 
 
 
 def test(model, data_loader):
@@ -107,7 +107,7 @@ def run_demo(args):
 
     dataset = DataSet('/mnt/nas/GrimaRepo/datasets/kinetics-400/', 16)
     loader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=False)
+        dataset, batch_size=4, shuffle=False)
 
 
     i3d_rgb = I3D(num_classes=400, modality='rgb')
