@@ -196,8 +196,18 @@ class Trainer():
         self.prior_epoch_loss = 10
 
         self.print_info()
-        self.loss_fn = torch.nn.CrossEntropyLoss().to(device)
+
+        self.main_loss_fn = torch.nn.CrossEntropyLoss().to(device)
         self.concept_loss_fn = torch.nn.BCELoss().to(device)
+
+    def loss_fn(self, target, scores, concepts_out):
+        loss = self.main_loss_fn(scores, target)
+
+        if self.cfg.MODEL.CONCEPT_AUX_TASK:
+            concepts_target = self.concepts_per_label[target]
+            loss += self.concept_loss_fn(concepts_out, concepts_target) * self.cfg.MODEL.CONCEPT_AUX_WEIGHT
+
+        return loss
 
     def print_info(self):
         print('Using config:')
@@ -278,11 +288,7 @@ class Trainer():
             ############################
             scores, concepts_out = self.model(image)
 
-            loss = self.loss_fn(scores, target)
-
-            if cfg.MODEL.CONCEPT_AUX_TASK:
-                concepts_target = self.concepts_per_label[target]
-                loss += self.concept_loss_fn(concepts_out, concepts_target) * cfg.MODEL.CONCEPT_AUX_WEIGHT
+            loss = self.loss_fn(target, scores, concepts_out)
 
             loss /= self.iter_to_step
 
@@ -405,11 +411,11 @@ class Trainer():
             target = target.long().to(device)
 
             with torch.no_grad():
-                scores = self.model(image)
-                loss = self.loss_fn(scores, target)
+                scores, concepts_out = self.model(image)
+                loss = self.loss_fn(target, scores, concepts_out)
                 loss_meter.update(loss.item(), target.shape[0])
-                scores_ema = self.model_ema(image)
-                loss_ema = self.loss_fn(scores_ema, target)
+                scores_ema, concepts_out_ema = self.model_ema(image)
+                loss_ema = self.loss_fn(target, scores_ema, concepts_out_ema)
                 loss_ema_meter.update(loss_ema.item(), target.shape[0])
 
             top1_ema, top5_ema = calc_accuracy(scores_ema.detach().cpu(), target.detach().cpu(), topk=(1, 5))
