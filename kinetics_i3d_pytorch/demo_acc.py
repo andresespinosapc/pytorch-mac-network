@@ -5,6 +5,8 @@ import numpy as np
 import torch
 import cv2
 
+from torchvision import transforms
+
 from src.i3dpt import I3D
 
 rgb_pt_checkpoint = 'model/model_rgb.pth'
@@ -19,6 +21,8 @@ class DataSet(object):
         self.name_clss = {}
         self.data = []
         self.target = []
+
+        self.norm = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 
         self.transform = None
         self.target_transform = None
@@ -40,7 +44,7 @@ class DataSet(object):
         #             self.name_clss[self.target[i]] = elem
         #             break
 
-        for elem in os.listdir(os.path.join(self.path, 'frames')):
+        for elem in self.data:
             self.name_clss[elem] = [ os.path.join(self.path, 'frames', elem, f) for f in os.listdir(os.path.join(self.path, 'frames', elem)) ]
 
     def __getitem__(self, index):
@@ -67,9 +71,9 @@ class DataSet(object):
             frame = cv2.imread(list_frames[s])
             frame = cv2.resize(frame, resize)
             frame = frame[:, :, [2, 1, 0]]
-            frames.append(frame)
+            frames.append(torch.from_numpy(frame).float() / 255)
 
-        return (frames / 255).permute(3,0,1,2) 
+        return (frames).permute(3,0,1,2) 
 
     def sample_frame(self, frames):
         s_frames = np.random.uniform(0, len(frames), self.num_frames)
@@ -103,7 +107,7 @@ def test(model, data_loader):
         input, target = input.to(device), target.to(device)
         output = model(input)[0]
         correct += (output.max(dim=1)[1] == target).data.sum()
-        total += target.size(0).item()
+        total += target.size(0)
         print("Iteracion[%d/%d] Acc: %f" %(i, len(data_loader), (correct.item() / total)*100))
     return correct.item() / len(data_loader.dataset)
 
