@@ -9,7 +9,7 @@ from src.i3dpt import I3D
 
 rgb_pt_checkpoint = 'model/model_rgb.pth'
 
-device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class DataSet(object):
     def __init__(self, path, frames):
@@ -83,9 +83,10 @@ def test(model, data_loader):
     correct = 0
     for input, target in data_loader:
         input, target = input.to(device), target.to(device)
-        print(input.size())
+        print(input.size(), flush=True)
         output = model(input)[0]
         correct += (output.max(dim=1)[1] == target).data.sum()
+        print(correct)
     return correct.item() / len(data_loader.dataset)
 
 def run_demo(args):
@@ -108,7 +109,7 @@ def run_demo(args):
 
     dataset = DataSet('/mnt/nas/GrimaRepo/datasets/kinetics-400/', 16)
     loader = torch.utils.data.DataLoader(
-        dataset, batch_size=2, shuffle=False)
+        dataset, batch_size=8, shuffle=False)
 
 
     i3d_rgb = I3D(num_classes=400, modality='rgb')
