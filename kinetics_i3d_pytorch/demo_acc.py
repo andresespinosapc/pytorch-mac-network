@@ -68,11 +68,12 @@ class DataSet(object):
 
         frames = []
         for s in s_frames:
-            frame = cv2.imread(list_frames[s])
+            frame = cv2.imread(list_frames[int(s)])
             frame = cv2.resize(frame, resize)
             frame = frame[:, :, [2, 1, 0]]
-            frames.append(torch.from_numpy(frame).float() / 255)
+            frames.append(self.norm(torch.from_numpy(frame).float() / 255))
 
+        frames = torch.stack(frames)
         return (frames).permute(3,0,1,2) 
 
     def sample_frame(self, frames):
@@ -113,9 +114,9 @@ def test(model, data_loader):
 
 def run_demo(args):
 
-    dataset = DataSet('/mnt/nas/GrimaRepo/datasets/kinetics-400/', 16)
+    dataset = DataSet('/mnt/nas/GrimaRepo/datasets/kinetics-400/', 64)
     loader = torch.utils.data.DataLoader(
-        dataset, batch_size=2, shuffle=False)
+        dataset, batch_size=8, shuffle=True)
 
 
     i3d_rgb = I3D(num_classes=400, modality='rgb')
