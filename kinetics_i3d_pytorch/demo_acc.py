@@ -9,7 +9,7 @@ from src.i3dpt import I3D
 
 rgb_pt_checkpoint = 'model/model_rgb.pth'
 
-device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class DataSet(object):
     def __init__(self, path, frames):
@@ -33,17 +33,22 @@ class DataSet(object):
                 self.data.append(name)
                 self.target.append(int(target))
 
-        for elem in os.listdir(os.path.join(self.path, 'val')):
-            video_elem = [ v.split('.')[0] for v in os.listdir(os.path.join(self.path, 'val', elem)) ]
-            for i,video in enumerate(self.data):
-                if video in video_elem:
-                    self.name_clss[self.target[i]] = elem
-                    break
+        # for elem in os.listdir(os.path.join(self.path, 'val')):
+        #     video_elem = [ v.split('.')[0] for v in os.listdir(os.path.join(self.path, 'val', elem)) ]
+        #     for i,video in enumerate(self.data):
+        #         if video in video_elem:
+        #             self.name_clss[self.target[i]] = elem
+        #             break
+
+        for elem in os.listdir(os.path.join(self.path, 'frames')):
+            self.name_clss[elem] = [ os.path.join(self.path, 'frames', elem, f) for f in os.listdir(os.path.join(self.path, 'frames', elem)) ]
 
     def __getitem__(self, index):
         video, target = self.data[index], self.target[index]
 
-        sample = self.load_video(os.path.join(self.path,'val',self.name_clss[target],video+'.mp4'))
+        #sample = self.load_video(os.path.join(self.path,'val',self.name_clss[target],video+'.mp4'))
+        sample = self.load_images(self.name_clss[video])
+
         if self.transform is not None:
             sample = self.transform(sample)
         if self.target_transform is not None:
@@ -53,6 +58,18 @@ class DataSet(object):
 
     def __len__(self):
         return len(self.data)
+
+    def load_images(self, list_frames, resize=(224, 224)):
+        s_frames = np.random.uniform(0, len(list_frames), self.num_frames)
+
+        frames = []
+        for s in s_frames:
+            frame = cv2.imread(list_frames[s])
+            frame = cv2.resize(frame, resize)
+            frame = frame[:, :, [2, 1, 0]]
+            frames.append(frame)
+
+        return (frames / 255).permute(3,0,1,2) 
 
     def sample_frame(self, frames):
         s_frames = np.random.uniform(0, len(frames), self.num_frames)
@@ -81,30 +98,16 @@ class DataSet(object):
 def test(model, data_loader):
     model.eval()
     correct = 0
-    for input, target in data_loader:
+    total = 0
+    for i, (input, target) in enumerate(data_loader):
         input, target = input.to(device), target.to(device)
-        print(input.size())
         output = model(input)[0]
         correct += (output.max(dim=1)[1] == target).data.sum()
+        total += target.size(0).item()
+        print("Iteracion[%d/%d] Acc: %f" %(i, len(data_loader), (correct.item() / total)*100))
     return correct.item() / len(data_loader.dataset)
 
 def run_demo(args):
-    
-    def get_scores(sample, model):
-        sample_var = torch.autograd.Variable(torch.from_numpy(sample).cuda())
-        out_var, out_logit = model(sample_var)
-        out_tensor = out_var.data.cpu()
-
-        top_val, top_idx = torch.sort(out_tensor, 1, descending=True)
-
-        print(
-            'Top {} classes and associated probabilities: '.format(args.top_k))
-        for i in range(args.top_k):
-            print('[{}]: {:.6E}'.format(kinetics_classes[top_idx[0, i]],
-                                        top_val[0, i]))
-        return out_logit
-
-
 
     dataset = DataSet('/mnt/nas/GrimaRepo/datasets/kinetics-400/', 16)
     loader = torch.utils.data.DataLoader(
