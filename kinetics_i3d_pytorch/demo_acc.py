@@ -20,6 +20,7 @@ class DataSet(object):
 
         self.name_clss = {}
         self.data = []
+        self.n_frame = []
         self.target = []
 
         self.norm = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
@@ -34,8 +35,10 @@ class DataSet(object):
             for line in f: 
                 name, n_frame, target = line.strip().split()
                 
-                self.data.append(name)
-                self.target.append(int(target))
+                if int(n_frame) > 64:
+                    self.data.append(name)
+                    self.target.append(int(target))
+                    self.n_frame.append(int(n_frame))
 
         for elem in os.listdir(os.path.join(self.path, 'val')):
             video_elem = [ v.split('.')[0] for v in os.listdir(os.path.join(self.path, 'val', elem)) ]
@@ -48,9 +51,9 @@ class DataSet(object):
         #     self.name_clss[elem] = [ os.path.join(self.path, 'frames', elem, f) for f in os.listdir(os.path.join(self.path, 'frames', elem)) ]
 
     def __getitem__(self, index):
-        video, target = self.data[index], self.target[index]
+        video, target, n_frame = self.data[index], self.target[index], self.n_frame[index]
 
-        sample = self.load_video(os.path.join(self.path,'val',self.name_clss[target],video+'.mp4'))
+        sample = self.load_video(os.path.join(self.path,'val',self.name_clss[target],video+'.mp4'), n_frame)
         #sample = self.load_images(self.name_clss[video])
 
         if self.transform is not None:
@@ -80,10 +83,10 @@ class DataSet(object):
         s_frames = np.random.uniform(0, len(frames), self.num_frames)
         return torch.tensor(frames, dtype=torch.float )[s_frames]
 
-    def load_video(self, path, resize=(224, 224)):
+    def load_video(self, path, n_frame, resize=(224, 224)):
         cap = cv2.VideoCapture(path)
 
-        skip = np.random.randint(0,150-self.num_frames,1)[0]
+        skip = np.random.randint(0,n_frame-self.num_frames,1)[0]
 
         frames = []
         try:
@@ -97,7 +100,7 @@ class DataSet(object):
                 frame = frame[:, :, [2, 1, 0]]
                 frames.append(torch.from_numpy(frame).float() / 255 )
           
-                if len(frames) == self.max_frames:
+                if len(frames) == self.num_frames:
                     break
         finally:
             cap.release()
