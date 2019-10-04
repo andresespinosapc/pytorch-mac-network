@@ -37,21 +37,21 @@ class DataSet(object):
                 self.data.append(name)
                 self.target.append(int(target))
 
-        # for elem in os.listdir(os.path.join(self.path, 'val')):
-        #     video_elem = [ v.split('.')[0] for v in os.listdir(os.path.join(self.path, 'val', elem)) ]
-        #     for i,video in enumerate(self.data):
-        #         if video in video_elem:
-        #             self.name_clss[self.target[i]] = elem
-        #             break
+        for elem in os.listdir(os.path.join(self.path, 'val')):
+            video_elem = [ v.split('.')[0] for v in os.listdir(os.path.join(self.path, 'val', elem)) ]
+            for i,video in enumerate(self.data):
+                if video in video_elem:
+                    self.name_clss[self.target[i]] = elem
+                    break
 
-        for elem in self.data:
-            self.name_clss[elem] = [ os.path.join(self.path, 'frames', elem, f) for f in os.listdir(os.path.join(self.path, 'frames', elem)) ]
+        # for elem in self.data:
+        #     self.name_clss[elem] = [ os.path.join(self.path, 'frames', elem, f) for f in os.listdir(os.path.join(self.path, 'frames', elem)) ]
 
     def __getitem__(self, index):
         video, target = self.data[index], self.target[index]
 
-        #sample = self.load_video(os.path.join(self.path,'val',self.name_clss[target],video+'.mp4'))
-        sample = self.load_images(self.name_clss[video])
+        sample = self.load_video(os.path.join(self.path,'val',self.name_clss[target],video+'.mp4'))
+        #sample = self.load_images(self.name_clss[video])
 
         if self.transform is not None:
             sample = self.transform(sample)
