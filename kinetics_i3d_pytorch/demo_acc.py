@@ -71,7 +71,7 @@ class DataSet(object):
             frame = cv2.imread(list_frames[int(s)])
             frame = cv2.resize(frame, resize)
             frame = frame[:, :, [2, 1, 0]]
-            frames.append(self.norm(torch.from_numpy(frame).float() / 255))
+            frames.append(torch.from_numpy(frame).float() / 255)
 
         frames = torch.stack(frames)
         return (frames).permute(3,0,1,2) 
@@ -109,14 +109,14 @@ def test(model, data_loader):
         output = model(input)[0]
         correct += (output.max(dim=1)[1] == target).data.sum()
         total += target.size(0)
-        print("Iteracion[%d/%d] Acc: %f" %(i, len(data_loader), (correct.item() / total)*100))
+        print("Iteracion[%d/%d] Acc: %f" %(i, len(data_loader), (correct.item() / total)*100), flush=True)
     return correct.item() / len(data_loader.dataset)
 
 def run_demo(args):
 
     dataset = DataSet('/mnt/nas/GrimaRepo/datasets/kinetics-400/', 64)
     loader = torch.utils.data.DataLoader(
-        dataset, batch_size=8, shuffle=True)
+        dataset, batch_size=4, shuffle=True)
 
 
     i3d_rgb = I3D(num_classes=400, modality='rgb')
