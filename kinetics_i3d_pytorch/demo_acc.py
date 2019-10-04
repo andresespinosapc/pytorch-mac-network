@@ -82,22 +82,28 @@ class DataSet(object):
 
     def load_video(self, path, resize=(224, 224)):
         cap = cv2.VideoCapture(path)
+
+        skip = np.random.randint(0,150-self.num_frames,1)[0]
+
         frames = []
         try:
             while True:
                 ret, frame = cap.read()
+                if i < skip:
+                    continue
                 if not ret:
                     break
                 frame = cv2.resize(frame, resize)
                 frame = frame[:, :, [2, 1, 0]]
-                frames.append(frame)
+                frames.append(torch.from_numpy(frame).float() / 255 )
           
-                #if len(frames) == self.max_frames:
-                #    break
+                if len(frames) == self.max_frames:
+                    break
         finally:
             cap.release()
-        frames = self.sample_frame(frames)
-        return (frames /255).permute(3,0,1,2) 
+        #frames = self.sample_frame(frames)
+        frames = torch.stack(frames)
+        return (frames).permute(3,0,1,2) 
 
 
 def test(model, data_loader):
