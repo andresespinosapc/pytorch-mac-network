@@ -1,0 +1,47 @@
+GPU_ID: '0'
+WORKERS: 1
+CUDA: TRUE
+
+PREPROCESS:
+    GLOVE_PATH: '/mnt/nas/GrimaRepo/aespinosa/glove.840B.300d.txt'
+    LABEL_NAMES_PATH: '/mnt/nas/GrimaRepo/aespinosa/label_names_10percent.txt'
+    WORD_TOKENIZE: True
+    REMOVE_STOPWORDS: True
+    LEMMATIZE: False
+
+TRAIN:
+    FLAG: True
+    LEARNING_RATE: 0.0001
+    EFFECTIVE_BATCH_SIZE: 16
+    REAL_BATCH_SIZE: 16
+    VAL_BATCH_SIZE: 16
+    MAX_EPOCHS: 25
+    SNAPSHOT_INTERVAL: 5
+    RESUME_SNAPSHOT_DIR: ""
+    RESUME_SNAPSHOT_ITER: 5
+    WEIGHT_INIT: "xavier_uniform"
+    EARLY_STOPPING: False
+    PATIENCE: 5
+    CLIP_GRADS: True
+    MAX_STEPS: 8
+
+MODEL:
+    STEM: 'from_mac'
+    USE_BASELINE_BACKBONE: False
+    STEM_DROPOUT3D: True
+    STEM_BATCHNORM: False
+    MODULE_DIM: 300
+
+DROPOUT:
+    READ_UNIT: 0.25
+    STEM: 0.25
+
+DATASET:
+    DATA_TYPE: 'videos'
+    DATA_FOLDER: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/20bn-something-something-v2' 
+    # FEATURES_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/s2s_feats_10percent.h5'
+    # VIDEOS_DIR: 'data/20bn-something-something-v2-frames'
+    LABELS_JSON_PATH: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/something-something-v2-labels.json'
+    TRAIN_JSON_PATH: '/mnt/nas/GrimaRepo/aespinosa/smth-smth-v2-baseline-with-models/notebooks/train_10percent.json'
+    VAL_JSON_PATH: '/mnt/nas/GrimaRepo/aespinosa/smth-smth-v2-baseline-with-models/notebooks/val_10percent.json'
+    LEARNED_EMBEDDINGS: False

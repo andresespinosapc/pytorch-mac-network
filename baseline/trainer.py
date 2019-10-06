@@ -256,8 +256,7 @@ class Trainer():
             ############################
             # (2) Train Model
             ############################
-            scores, _ = self.model(image)
-
+            _, scores = self.model(image)
             loss = self.loss_fn(target, scores)
 
             loss /= self.iter_to_step
@@ -367,7 +366,7 @@ class Trainer():
             target = target.long().to(device)
 
             with torch.no_grad():
-                scores, _ = self.model(image)
+                _, scores = self.model(image)
                 loss = self.loss_fn(target, scores)
                 loss_meter.update(loss.item(), target.shape[0])
 
