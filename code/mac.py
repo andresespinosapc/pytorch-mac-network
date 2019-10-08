@@ -352,7 +352,10 @@ class InputUnit(nn.Module):
         # embed = self.embedding_dropout(embed)
         contextual_words = question
 
-        return contextual_words, img
+        if self.cfg.MODEL.SWAP_KB_CTX:
+            return img, contextual_words
+        else:
+            return contextual_words, img
 
 
 class OutputUnit(nn.Module):
