@@ -445,6 +445,9 @@ if __name__ == '__main__':
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     model = I3D(num_classes=10, modality='rgb').to(device)
+    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+    n_params = sum([np.prod(p.size()) for p in model_parameters])
+    print('I3D number of params:', n_params)
 
     inp = torch.empty([2, 3, 10, 224, 224])
     out, out_logits = model(inp)
