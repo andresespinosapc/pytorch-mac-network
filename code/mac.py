@@ -464,40 +464,23 @@ class MACNetwork(nn.Module):
         return out, concepts_out
 
 if __name__ == '__main__':
-    from types import SimpleNamespace
+    from config import cfg
 
-    def dump_to_namespace(ns, d):
-        for k, v in d.items():
-            if isinstance(v, dict):
-                leaf_ns = SimpleNamespace()
-                ns.__dict__[k] = leaf_ns
-                dump_to_namespace(leaf_ns, v)
-            else:
-                ns.__dict__[k] = v
-
-    cfg_dict = {
-        'TRAIN': {
-            'VAR_DROPOUT': False,
-            'WEIGHT_INIT': 'xavier_uniform',
-            'MAX_STEPS': 4,
-        },
-        'MODEL': {
-            'MODULE_DIM': 300,
-        },
-        'DROPOUT': {
-            'STEM': 0.18,
-        }
-    }
-
-    cfg = SimpleNamespace()
-    dump_to_namespace(cfg, cfg_dict)
-
-    vocab = { 'question_token_to_idx': [] }
     labels_matrix = torch.empty([10, 300])
     concepts = torch.empty([20, 300])
-    model = MACNetwork(cfg, 5, vocab, labels_matrix, concepts, kb_shape=(72, 11, 11)).to(device)
+    model = MACNetwork(
+        cfg,
+        5,
+        labels_matrix,
+        concepts,
+        kb_shape=cfg.MODEL.KB_SHAPE,
+    ).to(device)
 
-    image = torch.empty([2, 256, 72, 11, 11]).to(device)
+    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+    n_params = sum([np.prod(p.size()) for p in model_parameters])
+    print('Number of params:', n_params)
+
+    image = torch.empty([2] + cfg.MODEL.KB_SHAPE).to(device)
     target = torch.empty([2]).to(device)
     scores = model(image)
     print('Scores shape:', scores.shape)
