@@ -118,6 +118,16 @@ class ReadUnit(nn.Module):
         self.dropout = nn.Dropout(cfg.DROPOUT.READ_UNIT)
         self.kproj = nn.Linear(module_dim, module_dim)
         self.mproj = nn.Linear(module_dim, module_dim)
+        self.multi_head_projs = nn.ModuleList()
+        
+        n_heads = cfg.MODEL.READ_UNIT_N_HEADS
+        if n_heads == 1:
+            self.multi_head_projs.append(nn.Identity())
+            self.multi_head_final_proj = nn.Identity()
+        else:
+            for _ in range(n_heads):
+                self.multi_head_projs.append(nn.Linear(module_dim, module_dim))
+            self.multi_head_final_proj = nn.Linear(module_dim * n_heads, module_dim)
 
         self.activation = nn.ELU()
         self.module_dim = module_dim
@@ -157,8 +167,13 @@ class ReadUnit(nn.Module):
         interactions = self.concat_2(interactions)
 
         ## Step 2: compute interactions with control
-        control = control.unsqueeze(1)
-        interactions = interactions * control
+        interactions_heads = []
+        for head_proj in self.multi_head_projs:
+            control_head = head_proj(control)
+            control_head = control_head.unsqueeze(1)
+            interactions_head = interactions * control_head
+            interactions_heads.append(interactions_head)
+        interactions = self.multi_head_final_proj(torch.cat(interactions_heads, -1))
         interactions = self.activation(interactions)
 
         ## Step 3: sum attentions up over the knowledge base
