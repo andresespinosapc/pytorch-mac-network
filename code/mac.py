@@ -13,7 +13,9 @@ from models import model3D_1
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-def load_MAC(cfg, kb_shape=(72, 11, 11)):
+def load_MAC(cfg, kb_shape=None):
+    if kb_shape is None:
+        kb_shape = cfg.MODEL.KB_SHAPE[1:]
     learned_embeds = cfg.DATASET.LEARNED_EMBEDDINGS
     vocab_size = None
     concepts_per_label = None
@@ -321,7 +323,7 @@ class InputUnit(nn.Module):
         elif cfg.MODEL.STEM == 'from_mac':
             self.stem = nn.Sequential(
                 dropout_class(p=cfg.DROPOUT.STEM),
-                nn.Conv3d(cfg.MODEL.INPUT_CHANNELS, module_dim, 3, 1, 1),
+                nn.Conv3d(cfg.MODEL.KB_SHAPE[0], module_dim, 3, 1, 1),
                 batchnorm_class(module_dim),
                 nn.ELU(),
                 dropout_class(p=cfg.DROPOUT.STEM),

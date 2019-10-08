@@ -168,7 +168,8 @@ class Trainer():
         if cfg.MODEL.STEM == 'from_baseline':
             kb_shape = (72, 3, 3)
         elif cfg.MODEL.STEM == 'from_mac':
-            kb_shape = (72, 11, 11)
+            kb_shape = cfg.MODEL.KB_SHAPE[1:]
+            # kb_shape = (72, 11, 11)
         self.model, self.model_ema, self.concepts_per_label = mac.load_MAC(cfg, kb_shape=kb_shape)
         self.weight_moving_average(alpha=0)
         if cfg.TRAIN.OPTIMIZER == 'adam':
