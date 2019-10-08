@@ -249,7 +249,7 @@ class I3D(torch.nn.Module):
         out = self.mixed_4c(out) # 512x18x14x14
         out = self.mixed_4d(out) # 512x18x14x14
         out = self.mixed_4e(out) # 528x18x14x14
-        out = self.mixed_4f(out) # 528x18x14x14
+        out = self.mixed_4f(out) # 832x18x14x14
         out = self.maxPool3d_5a_2x2(out) # 832x9x7x7
         out = self.mixed_5b(out)
         out = self.mixed_5c(out)
