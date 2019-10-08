@@ -164,13 +164,7 @@ class Trainer():
 
         # load model
         # self.vocab = load_vocab(cfg)
-        # TEMP
-        if cfg.MODEL.STEM == 'from_baseline':
-            kb_shape = (72, 3, 3)
-        elif cfg.MODEL.STEM == 'from_mac':
-            kb_shape = cfg.MODEL.KB_SHAPE[1:]
-            # kb_shape = (72, 11, 11)
-        self.model, self.model_ema, self.concepts_per_label = mac.load_MAC(cfg, kb_shape=kb_shape)
+        self.model, self.model_ema, self.concepts_per_label = mac.load_MAC(cfg)
         self.weight_moving_average(alpha=0)
         if cfg.TRAIN.OPTIMIZER == 'adam':
             self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)

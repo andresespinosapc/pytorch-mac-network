@@ -13,9 +13,7 @@ from models import model3D_1
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-def load_MAC(cfg, kb_shape=None):
-    if kb_shape is None:
-        kb_shape = cfg.MODEL.KB_SHAPE[1:]
+def load_MAC(cfg):
     learned_embeds = cfg.DATASET.LEARNED_EMBEDDINGS
     vocab_size = None
     concepts_per_label = None
@@ -35,7 +33,6 @@ def load_MAC(cfg, kb_shape=None):
         'predict_concepts': cfg.MODEL.CONCEPT_AUX_TASK,
         'labels_matrix': labels_matrix,
         'concepts': concepts,
-        'kb_shape': kb_shape,
         'learned_embeds': learned_embeds,
     }
 
@@ -191,7 +188,7 @@ class WriteUnit(nn.Module):
 
 
 class MACUnit(nn.Module):
-    def __init__(self, cfg, max_step=4, concepts_size=None, kb_shape=None, predict_concepts=False):
+    def __init__(self, cfg, max_step=4, concepts_size=None, predict_concepts=False):
         super().__init__()
         self.cfg = cfg
         module_dim = cfg.MODEL.MODULE_DIM
@@ -214,7 +211,6 @@ class MACUnit(nn.Module):
             self.save_attns = True
         else:
             self.save_attns = False
-        self.kb_shape = kb_shape
         self.concept_attns = []
         self.kb_attns = []
 
@@ -232,8 +228,18 @@ class MACUnit(nn.Module):
     def forward(self, context, knowledge):
         batch_size = context.size(0)
 
+        context_attn_shape = context.shape[2:]
+        knowledge_attn_shape = knowledge.shape[2:]
+        context = context.view(batch_size, context.shape[1], -1)
+        context = context.permute(0, 2, 1)
+        knowledge = knowledge.view(batch_size, knowledge.shape[1], -1)
+        knowledge = knowledge.permute(0, 2, 1)
+
         if self.predict_concepts:
-            concepts_out = torch.zeros((self.max_step, batch_size, self.concepts_size)).to(context.get_device())
+            device = context.get_device()
+            if device == -1:
+                device = 'cpu'
+            concepts_out = torch.zeros((self.max_step, batch_size, self.concepts_size)).to(device)
 
         if self.save_attns:
             self.concept_attns = []
@@ -247,11 +253,12 @@ class MACUnit(nn.Module):
             if self.predict_concepts:
                 concepts_out[i] = F.softmax(self.concept_clf(control), dim=1)
             if self.save_attns:
-                self.concept_attns.append(attn.squeeze(2).detach().cpu().numpy())
+                attn = attn.view((batch_size, *context_attn_shape))
+                self.concept_attns.append(attn.squeeze(-1).detach().cpu().numpy())
             # read unit
             info, attn = self.read(memory, knowledge, control, memDpMask)
             if self.save_attns:
-                attn = attn.view((batch_size, *self.kb_shape))
+                attn = attn.view((batch_size, *knowledge_attn_shape))
                 self.kb_attns.append(attn.detach().cpu().numpy())
             # write unit
             memory = self.write(memory, info)
@@ -323,7 +330,7 @@ class InputUnit(nn.Module):
         elif cfg.MODEL.STEM == 'from_mac':
             self.stem = nn.Sequential(
                 dropout_class(p=cfg.DROPOUT.STEM),
-                nn.Conv3d(cfg.MODEL.KB_SHAPE[0], module_dim, 3, 1, 1),
+                nn.Conv3d(cfg.MODEL.INPUT_DIM, module_dim, 3, 1, 1),
                 batchnorm_class(module_dim),
                 nn.ELU(),
                 dropout_class(p=cfg.DROPOUT.STEM),
@@ -339,18 +346,18 @@ class InputUnit(nn.Module):
         # self.encoder_embed = nn.Embedding(vocab_size, wordvec_dim)
         # self.embedding_dropout = nn.Dropout(p=0.15)
 
+    # image shape: (batch_size, dim, *any)
+    # question shape: (baatch_size, dim, *any)
     def forward(self, image, question):
         b_size = question.size(0)
 
         # get image features
         img = self.stem(image)
-        img = img.view(b_size, self.dim, -1)
-        img = img.permute(0,2,1)
 
         # get question and contextual word embeddings
         # embed = self.encoder_embed(question)
         # embed = self.embedding_dropout(embed)
-        contextual_words = question
+        contextual_words = question.permute(0, 2, 1)
 
         if self.cfg.MODEL.SWAP_KB_CTX:
             return img, contextual_words
@@ -391,8 +398,7 @@ class MACNetwork(nn.Module):
     def __init__(
         self, cfg, max_step, labels_matrix, concepts,
         vocab_size=None, wordvec_dim=300,
-        learned_embeds=False, kb_shape=(0, 0, 0),
-        predict_concepts=False,
+        learned_embeds=False, predict_concepts=False,
     ):
         super().__init__()
 
@@ -418,7 +424,7 @@ class MACNetwork(nn.Module):
         self.output_unit = OutputUnit()
 
         self.mac = MACUnit(
-            cfg, max_step=max_step, concepts_size=concepts.shape[0], kb_shape=kb_shape,
+            cfg, max_step=max_step, concepts_size=concepts.shape[0],
             predict_concepts=predict_concepts,
         )
 
@@ -476,16 +482,15 @@ if __name__ == '__main__':
         5,
         labels_matrix,
         concepts,
-        kb_shape=cfg.MODEL.KB_SHAPE,
     ).to(device)
 
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     n_params = sum([np.prod(p.size()) for p in model_parameters])
     print('Number of params:', n_params)
 
-    image = torch.empty([2] + cfg.MODEL.KB_SHAPE).to(device)
+    image = torch.empty([2, 832, 18, 14, 14]).to(device)
     target = torch.empty([2]).to(device)
-    scores = model(image)
+    scores, concepts_out = model(image)
     print('Scores shape:', scores.shape)
     concept_attns, kb_attns = model.get_attentions()
     print('Concept attentions shape:', concept_attns.shape)
