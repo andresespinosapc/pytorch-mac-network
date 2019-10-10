@@ -128,9 +128,9 @@ def get_labels_concepts_filename(cfg, get_concept_names_filename=False):
         'stop' if cfg.PREPROCESS.REMOVE_STOPWORDS else 'nstop',
         'lem' if cfg.PREPROCESS.LEMMATIZE else 'nlem',
     )
-    labels_concepts_filename = os.path.join(cfg.DATASET.LABELS_CONCEPTS_DIR, 'lab_con_' + suffix)
+    labels_concepts_filename = os.path.join(cfg.DATASET.LABELS_CONCEPTS_DIR, 'lab_con_' + suffix + '.h5')
     if get_concept_names_filename:
-        concept_names_filename = os.path.join(cfg.DATASET.LABELS_CONCEPTS_DIR, 'concept_names_' + suffix)
+        concept_names_filename = os.path.join(cfg.DATASET.LABELS_CONCEPTS_DIR, 'concept_names_' + suffix + '.txt')
         return labels_concepts_filename, concept_names_filename
     else:
         return labels_concepts_filename

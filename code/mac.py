@@ -492,6 +492,7 @@ if __name__ == '__main__':
 
     labels_matrix = torch.empty([10, 300])
     concepts = torch.empty([20, 300])
+    cfg.MODEL.INPUT_DIM = 2
     model = MACNetwork(
         cfg,
         5,
@@ -503,7 +504,7 @@ if __name__ == '__main__':
     n_params = sum([np.prod(p.size()) for p in model_parameters])
     print('Number of params:', n_params)
 
-    image = torch.empty([2, 832, 18, 14, 14]).to(device)
+    image = torch.empty([2, cfg.MODEL.INPUT_DIM, 18, 14, 14]).to(device)
     target = torch.empty([2]).to(device)
     scores, concepts_out = model(image)
     print('Scores shape:', scores.shape)
