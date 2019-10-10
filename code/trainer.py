@@ -1,6 +1,6 @@
 from __future__ import print_function
 
-from comet_ml import Experiment
+from comet_ml import Experiment, ExistingExperiment
 
 from pathlib import Path
 import sys
@@ -29,6 +29,8 @@ from datasets.s2s_videos import VideoFolder
 from datasets.transforms_video import *
 import mac
 
+from config import cfg
+
 
 comet_args = {
     'project_name': 'mac-actions',
@@ -37,7 +39,10 @@ comet_args = {
 if os.environ.get('COMET_DISABLE'):
     comet_args['disabled'] = True
     comet_args['api_key'] = ''
-experiment = Experiment(**comet_args)
+if cfg.TRAIN.RESUME_COMET_EXP_KEY:
+    experiment = ExistingExperiment(previous_experiment=cfg.TRAIN.RESUME_COMET_EXP_KEY, **comet_args)
+else:
+    experiment = Experiment(**comet_args)
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
