@@ -237,20 +237,20 @@ class I3D(torch.nn.Module):
 
     def forward(self, inp):
         # Preprocessing
-        out = self.conv3d_1a_7x7(inp)
-        out = self.maxPool3d_2a_3x3(out)
-        out = self.conv3d_2b_1x1(out)
-        out = self.conv3d_2c_3x3(out)
-        out = self.maxPool3d_3a_3x3(out)
-        out = self.mixed_3b(out)
-        out = self.mixed_3c(out)
-        out = self.maxPool3d_4a_3x3(out)
-        out = self.mixed_4b(out)
-        out = self.mixed_4c(out)
-        out = self.mixed_4d(out)
-        out = self.mixed_4e(out)
-        out = self.mixed_4f(out)
-        out = self.maxPool3d_5a_2x2(out)
+        out = self.conv3d_1a_7x7(inp) # 64x36x112x112
+        out = self.maxPool3d_2a_3x3(out) # 64x36x56x56
+        out = self.conv3d_2b_1x1(out) # 64x36x56x56
+        out = self.conv3d_2c_3x3(out) # 192x36x56x56
+        out = self.maxPool3d_3a_3x3(out) # 192x36x28x28
+        out = self.mixed_3b(out) # 256x36x28x28
+        out = self.mixed_3c(out) # 480x36x28x28
+        out = self.maxPool3d_4a_3x3(out) # 480x18x14x14
+        out = self.mixed_4b(out) # 512x18x14x14
+        out = self.mixed_4c(out) # 512x18x14x14
+        out = self.mixed_4d(out) # 512x18x14x14
+        out = self.mixed_4e(out) # 528x18x14x14
+        out = self.mixed_4f(out) # 832x18x14x14
+        out = self.maxPool3d_5a_2x2(out) # 832x9x7x7
         out = self.mixed_5b(out)
         out = self.mixed_5c(out)
         out = self.avg_pool(out)
@@ -308,6 +308,25 @@ class I3D(torch.nn.Module):
             bias=True,
             bn=False)
         self.load_state_dict(state_dict)
+
+class I3DFeats(I3D):
+    def forward(self, inp):
+        # Preprocessing
+        out = self.conv3d_1a_7x7(inp) # 64x36x112x112
+        out = self.maxPool3d_2a_3x3(out) # 64x36x56x56
+        out = self.conv3d_2b_1x1(out) # 64x36x56x56
+        out = self.conv3d_2c_3x3(out) # 192x36x56x56
+        out = self.maxPool3d_3a_3x3(out) # 192x36x28x28
+        out = self.mixed_3b(out) # 256x36x28x28
+        out = self.mixed_3c(out) # 480x36x28x28
+        out = self.maxPool3d_4a_3x3(out) # 480x18x14x14
+        out = self.mixed_4b(out) # 512x18x14x14
+        out = self.mixed_4c(out) # 512x18x14x14
+        out = self.mixed_4d(out) # 512x18x14x14
+        out = self.mixed_4e(out) # 528x18x14x14
+        out = self.mixed_4f(out) # 528x18x14x14
+        
+        return out
 
 
 def get_conv_params(sess, name, bias=False):
@@ -421,3 +440,16 @@ def load_mixed(state_dict, name_pt, sess, name_tf, fix_typo=False):
     # Branch 3
     load_conv3d(state_dict, name_pt + '.branch_3.1', sess,
                 os.path.join(name_tf, 'Branch_3/Conv3d_0b_1x1'))
+
+if __name__ == '__main__':
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+    model = I3D(num_classes=10, modality='rgb').to(device)
+    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
+    n_params = sum([np.prod(p.size()) for p in model_parameters])
+    print('I3D number of params:', n_params)
+
+    inp = torch.empty([2, 3, 10, 224, 224])
+    out, out_logits = model(inp)
+
+    print(out.shape)
