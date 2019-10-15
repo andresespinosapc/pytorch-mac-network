@@ -36,7 +36,7 @@ class VideoFolder(torch.utils.data.Dataset):
         self.is_val = is_val
         self.get_item_id = get_item_id
 
-        self.get_labels_10_percent()
+        #self.get_labels_10_percent()
 
     def get_labels_10_percent(self):
         self.few_class = []
@@ -68,8 +68,8 @@ class VideoFolder(torch.utils.data.Dataset):
         imgs = self.transform_post(imgs)
 
         num_frames = len(imgs)
-        #target_idx = self.classes_dict[label]
-        target_idx = self.few_class.index(label)
+        target_idx = self.classes_dict[label]
+        #target_idx = self.few_class.index(label)
 
         if self.nclips > -1:
             num_frames_necessary = self.clip_size * self.nclips * self.step_size

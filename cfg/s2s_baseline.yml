@@ -38,7 +38,8 @@ DROPOUT:
 
 DATASET:
     DATA_TYPE: 'videos'
-    DATA_FOLDER: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/20bn-something-something-v2' 
+    #DATA_FOLDER: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/20bn-something-something-v2' 
+    DATA_FOLDER: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/20bn-something-something-v2/'
     # FEATURES_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/s2s_feats_10percent.h5'
     # VIDEOS_DIR: 'data/20bn-something-something-v2-frames'
     LABELS_JSON_PATH: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/something-something-v2-labels.json'
