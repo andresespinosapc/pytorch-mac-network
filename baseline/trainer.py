@@ -35,6 +35,7 @@ import random
 import datetime
 import dateutil
 import dateutil.tz
+import time
 
 dir_path = (os.path.abspath(os.path.join(os.path.realpath(__file__), './.')))
 sys.path.append(dir_path)
@@ -256,7 +257,10 @@ class Trainer():
             ############################
             # (2) Train Model
             ############################
+            
+            start_time = time.time()
             _, scores = self.model(image)
+            print("---Run Model  %s seconds ---" % (time.time() - start_time))
             loss = self.loss_fn(target, scores)
 
             loss /= self.iter_to_step

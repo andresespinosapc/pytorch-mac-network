@@ -8,6 +8,7 @@ import torchvision
 from datasets.transforms_video import *
 # from utils import save_images_for_debug
 
+import time
 
 FRAMERATE = 12  # default value
 
@@ -49,6 +50,7 @@ class VideoFolder(torch.utils.data.Dataset):
         [!] FPS jittering doesn't work with AV dataloader as of now
         """
 
+        start_time = time.time()
         item = self.json_data[index]
 
         # Open video file
@@ -63,6 +65,9 @@ class VideoFolder(torch.utils.data.Dataset):
 
         reader.close()
 
+        print("---Lectura Video  %s seconds ---" % (time.time() - start_time))
+        start_time = time.time()
+
         imgs = self.transform_pre(imgs)
         imgs, label = self.augmentor(imgs, item.label)
         imgs = self.transform_post(imgs)
@@ -70,6 +75,9 @@ class VideoFolder(torch.utils.data.Dataset):
         num_frames = len(imgs)
         target_idx = self.classes_dict[label]
         #target_idx = self.few_class.index(label)
+
+        print("---Procesamiento Video  %s seconds ---" % (time.time() - start_time))
+        start_time = time.time()
 
         if self.nclips > -1:
             num_frames_necessary = self.clip_size * self.nclips * self.step_size
@@ -85,13 +93,19 @@ class VideoFolder(torch.utils.data.Dataset):
 
         imgs = imgs[offset: num_frames_necessary + offset: self.step_size]
 
+        print("---Cortar Video  %s seconds ---" % (time.time() - start_time))
+        start_time = time.time()
+
         if len(imgs) < (self.clip_size * self.nclips):
             imgs.extend([imgs[-1]] *
                         ((self.clip_size * self.nclips) - len(imgs)))
 
         # format data to torch
+        print("---Extender Video  %s seconds ---" % (time.time() - start_time))
+        start_time = time.time()
         data = torch.stack(imgs)
         data = data.permute(1, 0, 2, 3)
+        print("---Stack Video  %s seconds ---" % (time.time() - start_time))
         if self.get_item_id:
             return (data, target_idx, item.id)
         else:
