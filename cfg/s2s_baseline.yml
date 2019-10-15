@@ -42,6 +42,8 @@ DATASET:
     # FEATURES_PATH: '/workspace1/jahurtado/20BN-SOMETHING-SOMETHING-V2-1/s2s_feats_10percent.h5'
     # VIDEOS_DIR: 'data/20bn-something-something-v2-frames'
     LABELS_JSON_PATH: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/something-something-v2-labels.json'
-    TRAIN_JSON_PATH: '/mnt/nas/GrimaRepo/aespinosa/smth-smth-v2-baseline-with-models/notebooks/train_10percent.json'
-    VAL_JSON_PATH: '/mnt/nas/GrimaRepo/aespinosa/smth-smth-v2-baseline-with-models/notebooks/val_10percent.json'
+    # TRAIN_JSON_PATH: '/mnt/nas/GrimaRepo/aespinosa/smth-smth-v2-baseline-with-models/notebooks/train_10percent.json'
+    # VAL_JSON_PATH: '/mnt/nas/GrimaRepo/aespinosa/smth-smth-v2-baseline-with-models/notebooks/val_10percent.json'
+    TRAIN_JSON_PATH: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/something-something-v2-train.json'
+    VAL_JSON_PATH: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/something-something-v2-validation.json'
     LEARNED_EMBEDDINGS: False
