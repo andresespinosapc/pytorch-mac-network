@@ -282,7 +282,7 @@ class I3DClassifier(nn.Module):
         out_logits = out
         out = self.softmax(out_logits)
 
-        return out, out_logits
+        return out
 
 class I3D(nn.Module):
     def __init__(self,
@@ -637,4 +637,4 @@ if __name__ == '__main__':
         target = torch.empty([2]).to(device)
 
         out_list = model(image)
-        print(list(map(lambda x: x[0].shape, out_list)))
+        print(list(map(lambda x: x.shape, out_list)))

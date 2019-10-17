@@ -200,33 +200,36 @@ class Trainer():
         self.main_loss_fn = torch.nn.CrossEntropyLoss().to(device)
         self.concept_loss_fn = torch.nn.BCELoss().to(device)
 
-    def loss_fn(self, target, scores, concepts_out):
-        loss = self.main_loss_fn(scores, target)
+    # def loss_fn(self, target, scores, concepts_out):
+    #     loss = self.main_loss_fn(scores, target)
 
-        if self.cfg.MODEL.CONCEPT_AUX_TASK:
-            concepts_target = self.concepts_per_label[target]
-            loss += self.concept_loss_fn(concepts_out, concepts_target) * self.cfg.MODEL.CONCEPT_AUX_WEIGHT
+    #     if self.cfg.MODEL.CONCEPT_AUX_TASK:
+    #         concepts_target = self.concepts_per_label[target]
+    #         loss += self.concept_loss_fn(concepts_out, concepts_target) * self.cfg.MODEL.CONCEPT_AUX_WEIGHT
         
 
-        return loss
+    #     return loss
 
-    def loss_fn_multihead(self, target, scores_list):
-        loss = 0
+    # def loss_fn_multihead(self, target, scores_list):
+    #     loss = 0
 
-        concepts_target = self.mul_concepts_per_label[target]
-        for i, scores in enumerate(scores_list):
-            loss += self.main_loss_fn(scores, concepts_target[:, i])
+    #     concepts_target = self.mul_concepts_per_label[target]
+    #     for i, scores in enumerate(scores_list):
+    #         loss += self.main_loss_fn(scores, concepts_target[:, i])
 
-        return loss
+    #     return loss
 
     def update_meters(self, loss, target, scores, preffix='', ema=False):
         if ema:
             preffix = 'ema_' + preffix
         batch_size = target.shape[0]
-        top1, top5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
         self.meters[preffix + 'loss'].update(loss.item(), batch_size)
+        if scores.shape[1] >= 5:
+            top1, top5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+            self.meters[preffix + 'top5'].update(top5, batch_size)
+        else:
+            top1, = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1,))
         self.meters[preffix + 'top1'].update(top1, batch_size)
-        self.meters[preffix + 'top5'].update(top5, batch_size)
 
     def calc_loss_and_update_meters(self, target, model_out, ema=False):
         batch_size = target.shape[0]
@@ -242,9 +245,9 @@ class Trainer():
             self.update_meters(loss, target, scores, ema=ema)
         elif self.cfg.MODEL.NAME == 'i3d_multihead':
             concepts_target = self.mul_concepts_per_label[target]
-            for i, scores in enumerate(scores_list):
-                cur_loss = self.main_loss_fn(scores, cur_target)
+            for i, scores in enumerate(model_out):
                 cur_target = concepts_target[:, i]
+                cur_loss = self.main_loss_fn(scores, cur_target)
 
                 self.update_meters(cur_loss, cur_target, scores, preffix='head{}_'.format(i + 1), ema=ema)
                 
@@ -324,23 +327,28 @@ class Trainer():
                 })
 
         if ema:
-            for key in self.meters:
+            for key in list(self.meters.keys()):
                 self.meters['ema_' + key] = AverageMeter()
 
-    def log_progress(self, model_out, target):
-        if self.cfg.MODEL.NAME == 'mac':
-            top1, top5 = calc_accuracy(model_out.detach().cpu(), target.detach().cpu(), topk=(1, 5))
-            self.meters['loss'].update(loss.item(), target.shape[0])
-            self.meters['top1'].update(top1, target.shape[0])
-            self.meters['top5'].update(top5, target.shape[0])
-        elif self.cfg.MODEL.NAME == 'i3d_multihead':
-            concepts_target = self.mul_concepts_per_label[target]
-            for i, scores in enumerate(model_out):
-                top1, top5 = calc_accuracy(scores.detach().cpu(), concepts_target[:, i].detach().cpu(), topk=(1, 5))
-                preffix = 'head{}_'.format(i + 1)
-                self.meters[preffix + 'loss'].update(loss.item(), target.shape[0])
-                self.meters[preffix + 'top1'].update(top1, target.shape[0])
-                self.meters[preffix + 'top5'].update(top5, target.shape[0])
+    # def log_progress(self, model_out, target):
+    #     if self.cfg.MODEL.NAME == 'mac':
+    #         top1, top5 = calc_accuracy(model_out.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+    #         self.meters['loss'].update(loss.item(), target.shape[0])
+    #         self.meters['top1'].update(top1, target.shape[0])
+    #         self.meters['top5'].update(top5, target.shape[0])
+    #     elif self.cfg.MODEL.NAME == 'i3d_multihead':
+    #         concepts_target = self.mul_concepts_per_label[target]
+    #         for i, scores in enumerate(model_out):
+    #             preffix = 'head{}_'.format(i + 1)
+    #             self.meters[preffix + 'loss'].update(loss.item(), target.shape[0])
+    #             if scores.shape[1] >= 5:
+    #                 top1, top5 = calc_accuracy(scores.detach().cpu(), concepts_target[:, i].detach().cpu(), topk=(1, 5))
+    #                 self.meters[preffix + 'top5'].update(top5, target.shape[0])
+    #             else:
+    #                 top1, = calc_accuracy(scores.detach().cpu(), concepts_target[:, i].detach().cpu(), topk=(1,))
+                
+    #             self.meters[preffix + 'top1'].update(top1, target.shape[0])
+                
 
     def train_epoch(self, epoch):
         cfg = self.cfg
@@ -353,6 +361,7 @@ class Trainer():
         pbar = tqdm(self.labeled_data)
         self.optimizer.zero_grad()
 
+        self.init_meters()
         for i, (image, target) in enumerate(pbar):
             ######################################################
             # (1) Prepare training data
@@ -391,19 +400,19 @@ class Trainer():
                 pbar.set_description(
                     'Epoch: {}; Avg Loss: {:.5f}; Avg Top1: {:.5f}; Avg Top5: {:.5f}'.format(
                         epoch + 1,
-                        self.metrics['loss'].avg,
-                        self.metrics['top1'].avg,
-                        self.metrics['top5'].avg,
+                        self.meters['loss'].avg,
+                        self.meters['top1'].avg,
+                        self.meters['top5'].avg,
                     )
                 )
             elif self.cfg.MODEL.NAME == 'i3d_multihead':
                 pbar.set_description(
                     'Epoch: {}; Head1 Top1: {:.5f}; Head2 Top1: {:.5f}; Head3 Top1: {:.5f}; Head4 Top1: {:.5f}'.format(
                         epoch + 1,
-                        self.metrics['head1_top1'].avg,
-                        self.metrics['head2_top1'].avg,
-                        self.metrics['head3_top1'].avg,
-                        self.metrics['head14_top1'].avg,
+                        self.meters['head1_top1'].avg,
+                        self.meters['head2_top1'].avg,
+                        self.meters['head3_top1'].avg,
+                        self.meters['head4_top1'].avg,
                     )
                 )
 
@@ -440,9 +449,14 @@ class Trainer():
         for k, v in val_metrics.items():
             self.writer.add_scalar('val_{}'.format(k), v, epoch)
 
-        val_accuracy, val_accuracy_ema = val_metrics['avg_top1'], val_metrics['avg_top1_ema']
-        print("Epoch: {}\tVal Top1: {},\tVal Top1 EMA: {},\tVal Avg Loss: {},\tLR: {}".
-              format(epoch, val_accuracy, val_accuracy_ema, val_metrics['avg_loss'], self.lr))
+        if self.cfg.MODEL.NAME == 'mac':
+            val_accuracy, val_accuracy_ema = val_metrics['avg_top1'], val_metrics['avg_top1_ema']
+            print("Epoch: {}\tVal Top1: {},\tVal Top1 EMA: {},\tVal Avg Loss: {},\tLR: {}".
+                format(epoch, val_accuracy, val_accuracy_ema, val_metrics['avg_loss'], self.lr))
+        elif self.cfg.MODEL.NAME == 'i3d_multihead':
+            val_accuracy, val_accuracy_ema = val_metrics['avg_head1_top1'], val_metrics['avg_ema_head1_top1']
+            print("Epoch: {}\tVal Head1Top1 EMA: {},\tVal Head2Top1 EMA: {},\tVal Head3Top1 EMA: {},\tVal Head4Top1 EMA: {},\tLR: {}".
+                format(epoch, val_metrics['avg_ema_head1_top1'], val_metrics['avg_ema_head2_top1'], val_metrics['avg_ema_head3_top1'], val_metrics['avg_ema_head4_top1'], self.lr))
 
         if val_accuracy > self.previous_best_acc:
             self.previous_best_acc = val_accuracy

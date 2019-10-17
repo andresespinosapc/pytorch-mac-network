@@ -43,7 +43,7 @@ def load_model(cfg):
         model_ema = MACNetwork(cfg, **kwargs)
     elif cfg.MODEL.NAME == 'i3d_multihead':
         num_classes_list = list(map(
-            lambda i: mul_concepts_per_label[:, i].max().item(),
+            lambda i: mul_concepts_per_label[:, i].max().item() + 1,
             range(mul_concepts_per_label.shape[1]))
         )
         model = I3DMultiHead(num_classes_list=num_classes_list)

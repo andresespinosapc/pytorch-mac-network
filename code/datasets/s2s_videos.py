@@ -40,7 +40,6 @@ class VideoFolder(torch.utils.data.Dataset):
     def __getitem__(self, index):
         item = self.json_data[index]
 
-        start_time = time.time()
         cap = cv2.VideoCapture(item.path)
 
         imgs = []
@@ -59,8 +58,6 @@ class VideoFolder(torch.utils.data.Dataset):
 
         num_frames = len(imgs)
         target_idx = self.classes_dict[item.label]
-        print("---Lectura Video  %s seconds ---" % (time.time() - start_time))
-        start_time = time.time()
 
         if self.nclips > -1:
             num_frames_necessary = self.clip_size * self.nclips * self.step_size
@@ -76,16 +73,10 @@ class VideoFolder(torch.utils.data.Dataset):
 
         imgs = imgs[offset: num_frames_necessary + offset: self.step_size]
 
-        print("---Cortar Video  %s seconds ---" % (time.time() - start_time))
-        start_time = time.time()
 
         if len(imgs) < (self.clip_size * self.nclips):
             imgs.extend([imgs[-1]] *
                         ((self.clip_size * self.nclips) - len(imgs)))
-
-        # format data to torch
-        print("---Extender Video  %s seconds ---" % (time.time() - start_time))
-
 
         frames = torch.stack(imgs)
         data = (frames).permute(3,0,1,2) 
@@ -139,10 +130,7 @@ if __name__ == '__main__':
         batch_size=10, shuffle=False,
         num_workers=8, pin_memory=True)
 
-    start = time.time()
     for i, a in enumerate(tqdm(batch_loader)):
         if i > 100:
             break
         pass
-    print("Size --> {}".format(a[0].size()))
-    print(time.time() - start)
