@@ -1,6 +1,7 @@
 import av
 import torch
 import numpy as np
+import cv2
 
 from datasets.data_parser import WebmDataset
 from datasets.data_augmentor import Augmentor
@@ -128,7 +129,7 @@ class VideoFolder(torch.utils.data.Dataset):
 
                 if not ret:
                     break
-                frame = cv2.resize(frame, resize)
+                frame = cv2.resize(frame, (224, 224))
                 frame = frame[:, :, [2, 1, 0]]
                 imgs.append(torch.from_numpy(frame).float() / 255 )
 
@@ -136,7 +137,7 @@ class VideoFolder(torch.utils.data.Dataset):
             cap.release()
 
         num_frames = len(imgs)
-        target_idx = self.classes_dict[label]
+        target_idx = self.classes_dict[item.label]
         print("---Lectura Video  %s seconds ---" % (time.time() - start_time))
         start_time = time.time()
 
@@ -165,7 +166,7 @@ class VideoFolder(torch.utils.data.Dataset):
         print("---Extender Video  %s seconds ---" % (time.time() - start_time))
 
 
-        frames = torch.stack(frames)
+        frames = torch.stack(imgs)
         data = (frames).permute(3,0,1,2) 
 
         if self.get_item_id:
