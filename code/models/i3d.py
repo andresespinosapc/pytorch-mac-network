@@ -260,6 +260,9 @@ class I3DClassifier(nn.Module):
     def __init__(self, in_channels, num_classes):
         super().__init__()
 
+        if num_classes <= 0:
+            raise ValueError('num_classes must be > 0')
+
         self.in_channels = in_channels
         self.num_classes = num_classes
         self.conv3d_0c_1x1 = Unit3Dpy(
@@ -442,6 +445,7 @@ class I3DMultiHead(nn.Module):
         super().__init__()
 
         self.name = name
+        self.n_heads = len(num_classes_list)
         self.backbone_module = I3DBackbone(modality=modality)
         self.head_modules = nn.ModuleList()
         self.head_clfs = nn.ModuleList()
@@ -453,7 +457,7 @@ class I3DMultiHead(nn.Module):
     def forward(self, out):
         out = self.backbone_module(out)
         out_list = []
-        for i in range(len(self.head_modules)):
+        for i in range(self.n_heads):
             out_list.append(self.head_clfs[i](self.head_modules[i](out)))
 
         return out_list
