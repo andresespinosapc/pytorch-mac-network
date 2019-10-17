@@ -47,6 +47,7 @@ __C.TRAIN.VAR_DROPOUT = False
 __C.TRAIN = dict(__C.TRAIN)
 
 __C.MODEL = edict()
+__C.MODEL.NAME = 'mac'
 __C.MODEL.INPUT_DIM = 832
 __C.MODEL.SWAP_KB_CTX = False
 __C.MODEL.CONCEPT_AUX_TASK = False

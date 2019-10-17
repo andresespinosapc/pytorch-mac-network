@@ -169,7 +169,7 @@ class Trainer():
 
         # load model
         # self.vocab = load_vocab(cfg)
-        self.model, self.model_ema, self.concepts_per_label = mac.load_MAC(cfg)
+        self.model, self.model_ema, self.concepts_per_label, self.mul_concepts_per_label = mac.load_model(cfg)
         self.weight_moving_average(alpha=0)
         if cfg.TRAIN.OPTIMIZER == 'adam':
             self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
@@ -200,14 +200,61 @@ class Trainer():
         self.main_loss_fn = torch.nn.CrossEntropyLoss().to(device)
         self.concept_loss_fn = torch.nn.BCELoss().to(device)
 
-    def loss_fn(self, target, scores, concepts_out):
-        loss = self.main_loss_fn(scores, target)
+    # def loss_fn(self, target, scores, concepts_out):
+    #     loss = self.main_loss_fn(scores, target)
 
-        if self.cfg.MODEL.CONCEPT_AUX_TASK:
-            concepts_target = self.concepts_per_label[target]
-            loss += self.concept_loss_fn(concepts_out, concepts_target) * self.cfg.MODEL.CONCEPT_AUX_WEIGHT
+    #     if self.cfg.MODEL.CONCEPT_AUX_TASK:
+    #         concepts_target = self.concepts_per_label[target]
+    #         loss += self.concept_loss_fn(concepts_out, concepts_target) * self.cfg.MODEL.CONCEPT_AUX_WEIGHT
+        
+
+    #     return loss
+
+    # def loss_fn_multihead(self, target, scores_list):
+    #     loss = 0
+
+    #     concepts_target = self.mul_concepts_per_label[target]
+    #     for i, scores in enumerate(scores_list):
+    #         loss += self.main_loss_fn(scores, concepts_target[:, i])
+
+    #     return loss
+
+    def update_meters(self, loss, target, scores, preffix='', ema=False):
+        if ema:
+            preffix = 'ema_' + preffix
+        batch_size = target.shape[0]
+        self.meters[preffix + 'loss'].update(loss.item(), batch_size)
+        if scores.shape[1] >= 5:
+            top1, top5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+            self.meters[preffix + 'top5'].update(top5, batch_size)
+        else:
+            top1, = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1,))
+        self.meters[preffix + 'top1'].update(top1, batch_size)
+
+    def calc_loss_and_update_meters(self, target, model_out, ema=False):
+        batch_size = target.shape[0]
+        loss = 0
+
+        if self.cfg.MODEL.NAME == 'mac':
+            scores, concepts_out = model_out
+            loss += self.main_loss_fn(scores, target)
+            if self.cfg.MODEL.CONCEPT_AUX_TASK:
+                concepts_target = self.concepts_per_label[target]
+                loss += self.concept_loss_fn(concepts_out, concepts_target) * self.cfg.MODEL.CONCEPT_AUX_WEIGHT
+
+            self.update_meters(loss, target, scores, ema=ema)
+        elif self.cfg.MODEL.NAME == 'i3d_multihead':
+            concepts_target = self.mul_concepts_per_label[target]
+            for i, scores in enumerate(model_out):
+                cur_target = concepts_target[:, i]
+                cur_loss = self.main_loss_fn(scores, cur_target)
+
+                self.update_meters(cur_loss, cur_target, scores, preffix='head{}_'.format(i + 1), ema=ema)
+                
+                loss += cur_loss
 
         return loss
+
 
     def print_info(self):
         print('Using config:')
@@ -261,11 +308,49 @@ class Trainer():
         load_model(self.model, self.optimizer, iteration, model_dir, model_name='model')
         load_model(self.model_ema, None, iteration, model_dir, model_name='model_ema')
 
-    def train_epoch(self, epoch):
-        loss_meter = AverageMeter()
-        top1_meter = AverageMeter()
-        top5_meter = AverageMeter()
+    def init_meters(self, ema=False):
+        if self.cfg.MODEL.NAME == 'mac':
+            self.meters = {
+                'loss': AverageMeter(),
+                'top1': AverageMeter(),
+                'top5': AverageMeter(),
+            }
+        elif self.cfg.MODEL.NAME == 'i3d_multihead':
+            n_heads = self.model.n_heads
+            self.meters = {}
+            for i in range(n_heads):
+                preffix = 'head{}_'.format(i + 1)
+                self.meters.update({
+                    preffix + 'loss': AverageMeter(),
+                    preffix + 'top1': AverageMeter(),
+                    preffix + 'top5': AverageMeter(),
+                })
 
+        if ema:
+            for key in list(self.meters.keys()):
+                self.meters['ema_' + key] = AverageMeter()
+
+    # def log_progress(self, model_out, target):
+    #     if self.cfg.MODEL.NAME == 'mac':
+    #         top1, top5 = calc_accuracy(model_out.detach().cpu(), target.detach().cpu(), topk=(1, 5))
+    #         self.meters['loss'].update(loss.item(), target.shape[0])
+    #         self.meters['top1'].update(top1, target.shape[0])
+    #         self.meters['top5'].update(top5, target.shape[0])
+    #     elif self.cfg.MODEL.NAME == 'i3d_multihead':
+    #         concepts_target = self.mul_concepts_per_label[target]
+    #         for i, scores in enumerate(model_out):
+    #             preffix = 'head{}_'.format(i + 1)
+    #             self.meters[preffix + 'loss'].update(loss.item(), target.shape[0])
+    #             if scores.shape[1] >= 5:
+    #                 top1, top5 = calc_accuracy(scores.detach().cpu(), concepts_target[:, i].detach().cpu(), topk=(1, 5))
+    #                 self.meters[preffix + 'top5'].update(top5, target.shape[0])
+    #             else:
+    #                 top1, = calc_accuracy(scores.detach().cpu(), concepts_target[:, i].detach().cpu(), topk=(1,))
+                
+    #             self.meters[preffix + 'top1'].update(top1, target.shape[0])
+                
+
+    def train_epoch(self, epoch):
         cfg = self.cfg
         avg_loss = 0
         train_accuracy = 0
@@ -276,6 +361,7 @@ class Trainer():
         pbar = tqdm(self.labeled_data)
         self.optimizer.zero_grad()
 
+        self.init_meters()
         for i, (image, target) in enumerate(pbar):
             ######################################################
             # (1) Prepare training data
@@ -286,9 +372,8 @@ class Trainer():
             ############################
             # (2) Train Model
             ############################
-            scores, concepts_out = self.model(image)
-
-            loss = self.loss_fn(target, scores, concepts_out)
+            model_out = self.model(image)
+            loss = self.calc_loss_and_update_meters(target, model_out)
 
             loss /= self.iter_to_step
 
@@ -302,14 +387,6 @@ class Trainer():
 
                 self.optimizer.zero_grad()
 
-            ############################
-            # (3) Log Progress
-            ############################
-            top1, top5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
-            loss_meter.update(loss.item(), target.shape[0])
-            top1_meter.update(top1, target.shape[0])
-            top5_meter.update(top5, target.shape[0])
-
             # accuracy = top1
             # if avg_loss == 0:
             #     avg_loss = loss.item()
@@ -319,17 +396,27 @@ class Trainer():
             #     train_accuracy = 0.99 * train_accuracy + 0.01 * accuracy
             # self.total_epoch_loss += loss.item()
 
-            pbar.set_description(
-                'Epoch: {}; Avg Loss: {:.5f}; Avg Top1: {:.5f}; Avg Top5: {:.5f}'.format(
-                    epoch + 1, loss_meter.avg, top1_meter.avg, top5_meter.avg
+            if self.cfg.MODEL.NAME == 'mac':
+                pbar.set_description(
+                    'Epoch: {}; Avg Loss: {:.5f}; Avg Top1: {:.5f}; Avg Top5: {:.5f}'.format(
+                        epoch + 1,
+                        self.meters['loss'].avg,
+                        self.meters['top1'].avg,
+                        self.meters['top5'].avg,
+                    )
                 )
-            )
+            elif self.cfg.MODEL.NAME == 'i3d_multihead':
+                pbar.set_description(
+                    'Epoch: {}; Head1 Top1: {:.5f}; Head2 Top1: {:.5f}; Head3 Top1: {:.5f}; Head4 Top1: {:.5f}'.format(
+                        epoch + 1,
+                        self.meters['head1_top1'].avg,
+                        self.meters['head2_top1'].avg,
+                        self.meters['head3_top1'].avg,
+                        self.meters['head4_top1'].avg,
+                    )
+                )
 
-        metrics = {
-            'avg_loss': loss_meter.avg,
-            'avg_top1': top1_meter.avg,
-            'avg_top5': top5_meter.avg,
-        }
+        metrics = { 'avg_{}'.format(key): meter.avg for key, meter in self.meters.items() }
         experiment.log_metrics(metrics)
 
         return metrics
@@ -362,9 +449,14 @@ class Trainer():
         for k, v in val_metrics.items():
             self.writer.add_scalar('val_{}'.format(k), v, epoch)
 
-        val_accuracy, val_accuracy_ema = val_metrics['avg_top1'], val_metrics['avg_top1_ema']
-        print("Epoch: {}\tVal Top1: {},\tVal Top1 EMA: {},\tVal Avg Loss: {},\tLR: {}".
-              format(epoch, val_accuracy, val_accuracy_ema, val_metrics['avg_loss'], self.lr))
+        if self.cfg.MODEL.NAME == 'mac':
+            val_accuracy, val_accuracy_ema = val_metrics['avg_top1'], val_metrics['avg_top1_ema']
+            print("Epoch: {}\tVal Top1: {},\tVal Top1 EMA: {},\tVal Avg Loss: {},\tLR: {}".
+                format(epoch, val_accuracy, val_accuracy_ema, val_metrics['avg_loss'], self.lr))
+        elif self.cfg.MODEL.NAME == 'i3d_multihead':
+            val_accuracy, val_accuracy_ema = val_metrics['avg_head1_top1'], val_metrics['avg_ema_head1_top1']
+            print("Epoch: {}\tVal Head1Top1 EMA: {},\tVal Head2Top1 EMA: {},\tVal Head3Top1 EMA: {},\tVal Head4Top1 EMA: {},\tLR: {}".
+                format(epoch, val_metrics['avg_ema_head1_top1'], val_metrics['avg_ema_head2_top1'], val_metrics['avg_ema_head3_top1'], val_metrics['avg_ema_head4_top1'], self.lr))
 
         if val_accuracy > self.previous_best_acc:
             self.previous_best_acc = val_accuracy
@@ -391,12 +483,7 @@ class Trainer():
         else:
             max_iter = None
 
-        loss_meter = AverageMeter()
-        top1_meter = AverageMeter()
-        top5_meter = AverageMeter()
-        loss_ema_meter = AverageMeter()
-        top1_ema_meter = AverageMeter()
-        top5_ema_meter = AverageMeter()
+        self.init_meters(ema=True)
 
         for _iteration in range(total_iters):
             try:
@@ -411,30 +498,16 @@ class Trainer():
             target = target.long().to(device)
 
             with torch.no_grad():
-                scores, concepts_out = self.model(image)
-                loss = self.loss_fn(target, scores, concepts_out)
-                loss_meter.update(loss.item(), target.shape[0])
-                scores_ema, concepts_out_ema = self.model_ema(image)
-                loss_ema = self.loss_fn(target, scores_ema, concepts_out_ema)
-                loss_ema_meter.update(loss_ema.item(), target.shape[0])
+                model_out = self.model(image)
+                ema_model_out = self.model_ema(image)
+                loss = self.calc_loss_and_update_meters(target, model_out)
+                loss_ema = self.calc_loss_and_update_meters(target, ema_model_out)
 
-            top1_ema, top5_ema = calc_accuracy(scores_ema.detach().cpu(), target.detach().cpu(), topk=(1, 5))
-            top1_ema_meter.update(top1_ema, target.shape[0])
-            top5_ema_meter.update(top5_ema, target.shape[0])
+        # TEMP
+        if self.cfg.MODEL.NAME != 'i3d_multihead':
+            self.scheduler.step(self.meters['loss'].avg)
 
-            top1, top5 = calc_accuracy(scores.detach().cpu(), target.detach().cpu(), topk=(1, 5))
-            top1_meter.update(top1, target.shape[0])
-            top5_meter.update(top5, target.shape[0])
-
-        self.scheduler.step(loss_meter.avg)
-        metrics = {
-            'avg_loss': loss_meter.avg,
-            'avg_top1': top1_meter.avg,
-            'avg_top5': top5_meter.avg,
-            'avg_loss_ema': loss_ema_meter.avg,
-            'avg_top1_ema': top1_ema_meter.avg,
-            'avg_top5_ema': top5_ema_meter.avg,
-        }
+        metrics = { 'avg_{}'.format(key): meter.avg for key, meter in self.meters.items() }
         experiment.log_metrics(metrics)
 
         return metrics

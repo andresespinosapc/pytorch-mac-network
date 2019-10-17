@@ -1,6 +1,7 @@
 import av
 import torch
 import numpy as np
+import cv2
 
 from datasets.data_parser import WebmDataset
 from datasets.data_augmentor import Augmentor
@@ -37,30 +38,26 @@ class VideoFolder(torch.utils.data.Dataset):
         self.get_item_id = get_item_id
 
     def __getitem__(self, index):
-        """
-        [!] FPS jittering doesn't work with AV dataloader as of now
-        """
-
         item = self.json_data[index]
 
-        # Open video file
-        reader = av.open(item.path)
+        cap = cv2.VideoCapture(item.path)
 
+        imgs = []
         try:
-            imgs = []
-            imgs = [f.to_rgb().to_ndarray() for f in reader.decode(video=0)]
-        except (RuntimeError, ZeroDivisionError) as exception:
-            print('{}: WEBM reader cannot open {}. Empty '
-                  'list returned.'.format(type(exception).__name__, item.path))
+            while True:
+                ret, frame = cap.read()
 
-        reader.close()
+                if not ret:
+                    break
+                frame = cv2.resize(frame, (224, 224))
+                frame = frame[:, :, [2, 1, 0]]
+                imgs.append(torch.from_numpy(frame).float() / 255 )
 
-        imgs = self.transform_pre(imgs)
-        imgs, label = self.augmentor(imgs, item.label)
-        imgs = self.transform_post(imgs)
+        finally:
+            cap.release()
 
         num_frames = len(imgs)
-        target_idx = self.classes_dict[label]
+        target_idx = self.classes_dict[item.label]
 
         if self.nclips > -1:
             num_frames_necessary = self.clip_size * self.nclips * self.step_size
@@ -76,13 +73,14 @@ class VideoFolder(torch.utils.data.Dataset):
 
         imgs = imgs[offset: num_frames_necessary + offset: self.step_size]
 
+
         if len(imgs) < (self.clip_size * self.nclips):
             imgs.extend([imgs[-1]] *
                         ((self.clip_size * self.nclips) - len(imgs)))
 
-        # format data to torch
-        data = torch.stack(imgs)
-        data = data.permute(1, 0, 2, 3)
+        frames = torch.stack(imgs)
+        data = (frames).permute(3,0,1,2) 
+
         if self.get_item_id:
             return (data, target_idx, item.id)
         else:
@@ -93,11 +91,11 @@ class VideoFolder(torch.utils.data.Dataset):
 
 
 if __name__ == '__main__':
-    upscale_size = int(84 * 1.1)
+    upscale_size = int(224)
     transform_pre = ComposeMix([
             # [RandomRotationVideo(20), "vid"],
             [Scale(upscale_size), "img"],
-            [RandomCropVideo(84), "vid"],
+            [RandomCropVideo(224), "vid"],
             # [RandomHorizontalFlipVideo(0), "vid"],
             # [RandomReverseTimeVideo(1), "vid"],
             # [torchvision.transforms.ToTensor(), "img"],
@@ -132,10 +130,7 @@ if __name__ == '__main__':
         batch_size=10, shuffle=False,
         num_workers=8, pin_memory=True)
 
-    start = time.time()
     for i, a in enumerate(tqdm(batch_loader)):
         if i > 100:
             break
         pass
-    print("Size --> {}".format(a[0].size()))
-    print(time.time() - start)

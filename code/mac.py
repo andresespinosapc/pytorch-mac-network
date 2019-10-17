@@ -9,11 +9,12 @@ from torch.autograd import Variable
 from utils import *
 from models.multi_column import MultiColumn
 from models import model3D_1
+from models.i3d import I3DMultiHead
 
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-def load_MAC(cfg):
+def load_model(cfg):
     learned_embeds = cfg.DATASET.LEARNED_EMBEDDINGS
     vocab_size = None
     concepts_per_label = None
@@ -25,6 +26,7 @@ def load_MAC(cfg):
         with h5py.File(get_labels_concepts_filename(cfg)) as h5f:
             labels_matrix = h5f['labels_matrix'][:]
             concepts_per_label = torch.tensor(h5f['concepts_per_label'][:])
+            mul_concepts_per_label = torch.tensor(h5f['mul_concepts_per_label'][:])
             concepts = h5f['concepts'][:]
 
     kwargs = {
@@ -36,8 +38,16 @@ def load_MAC(cfg):
         'learned_embeds': learned_embeds,
     }
 
-    model = MACNetwork(cfg, **kwargs)
-    model_ema = MACNetwork(cfg, **kwargs)
+    if cfg.MODEL.NAME == 'mac':
+        model = MACNetwork(cfg, **kwargs)
+        model_ema = MACNetwork(cfg, **kwargs)
+    elif cfg.MODEL.NAME == 'i3d_multihead':
+        num_classes_list = list(map(
+            lambda i: mul_concepts_per_label[:, i].max().item() + 1,
+            range(mul_concepts_per_label.shape[1]))
+        )
+        model = I3DMultiHead(num_classes_list=num_classes_list)
+        model_ema = I3DMultiHead(num_classes_list=num_classes_list)
     for param in model_ema.parameters():
         param.requires_grad = False
 
@@ -45,7 +55,7 @@ def load_MAC(cfg):
     model_ema = model_ema.to(device)
     concepts_per_label = concepts_per_label.to(device)
     model.train()
-    return model, model_ema, concepts_per_label
+    return model, model_ema, concepts_per_label, mul_concepts_per_label
 
 
 class ControlUnit(nn.Module):
