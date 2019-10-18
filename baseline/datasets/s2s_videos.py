@@ -9,6 +9,8 @@ import torchvision
 from datasets.transforms_video import *
 # from utils import save_images_for_debug
 
+from torchvision import transforms
+
 import time
 
 FRAMERATE = 12  # default value
@@ -27,6 +29,11 @@ class VideoFolder(torch.utils.data.Dataset):
         self.classes_dict = self.dataset_object.classes_dict
         self.root = root
         self.transform_pre = transform_pre
+        self.transform = transforms.Compose([
+                            transforms.Resize(224*1.1)
+                            transforms.RandomCrop(224),
+                            transforms.ToTensor(),
+                        ])
         self.transform_post = transform_post
 
         self.augmentor = Augmentor(augmentation_mappings_json,
@@ -46,72 +53,6 @@ class VideoFolder(torch.utils.data.Dataset):
             for line in f: 
                 self.few_class.append(line.strip()) 
 
-    # def __getitem__(self, index):
-    #     """
-    #     [!] FPS jittering doesn't work with AV dataloader as of now
-    #     """
-
-    #     start_time = time.time()
-    #     item = self.json_data[index]
-
-    #     # Open video file
-    #     reader = av.open(item.path)
-
-    #     try:
-    #         imgs = []
-    #         imgs = [f.to_rgb().to_ndarray() for f in reader.decode(video=0)]
-    #     except (RuntimeError, ZeroDivisionError) as exception:
-    #         print('{}: WEBM reader cannot open {}. Empty '
-    #               'list returned.'.format(type(exception).__name__, item.path))
-
-    #     reader.close()
-
-    #     print("---Lectura Video  %s seconds ---" % (time.time() - start_time))
-    #     start_time = time.time()
-
-    #     imgs = self.transform_pre(imgs)
-    #     imgs, label = self.augmentor(imgs, item.label)
-    #     imgs = self.transform_post(imgs)
-
-    #     num_frames = len(imgs)
-    #     target_idx = self.classes_dict[label]
-    #     #target_idx = self.few_class.index(label)
-
-    #     print("---Procesamiento Video  %s seconds ---" % (time.time() - start_time))
-    #     start_time = time.time()
-
-    #     if self.nclips > -1:
-    #         num_frames_necessary = self.clip_size * self.nclips * self.step_size
-    #     else:
-    #         num_frames_necessary = num_frames
-    #     offset = 0
-    #     if num_frames_necessary < num_frames:
-    #         # If there are more frames, then sample starting offset.
-    #         diff = (num_frames - num_frames_necessary)
-    #         # temporal augmentation
-    #         if not self.is_val:
-    #             offset = np.random.randint(0, diff)
-
-    #     imgs = imgs[offset: num_frames_necessary + offset: self.step_size]
-
-    #     print("---Cortar Video  %s seconds ---" % (time.time() - start_time))
-    #     start_time = time.time()
-
-    #     if len(imgs) < (self.clip_size * self.nclips):
-    #         imgs.extend([imgs[-1]] *
-    #                     ((self.clip_size * self.nclips) - len(imgs)))
-
-    #     # format data to torch
-    #     print("---Extender Video  %s seconds ---" % (time.time() - start_time))
-    #     start_time = time.time()
-    #     data = torch.stack(imgs)
-    #     data = data.permute(1, 0, 2, 3)
-    #     print("---Stack Video  %s seconds ---" % (time.time() - start_time))
-    #     if self.get_item_id:
-    #         return (data, target_idx, item.id)
-    #     else:
-    #         return (data, target_idx)
-
     def __len__(self):
         return len(self.json_data)
 
@@ -119,27 +60,28 @@ class VideoFolder(torch.utils.data.Dataset):
     def __getitem__(self, index):
         item = self.json_data[index]
 
-        start_time = time.time()
-        cap = cv2.VideoCapture(item.path)
-
-        imgs = []
+        cap = av.open(item.path)
         try:
-            while True:
-                ret, frame = cap.read()
-
-                if not ret:
-                    break
-                frame = cv2.resize(frame, (224, 224))
-                frame = frame[:, :, [2, 1, 0]]
-                imgs.append(torch.from_numpy(frame).float() / 255 )
-
+            imgs = [self.transform(f.to_image()) for f in reader.decode(video=0)]
         finally:
-            cap.release()
+            cap.close()
+        # cap = cv2.VideoCapture(item.path)
+        # imgs = []
+        # try:
+        #     while True:
+        #         ret, frame = cap.read()
+
+        #         if not ret:
+        #             break
+        #         frame = cv2.resize(frame, (224, 224))
+        #         frame = frame[:, :, [2, 1, 0]]
+        #         imgs.append(torch.from_numpy(frame).float() / 255 )
+
+        # finally:
+        #     cap.release()
 
         num_frames = len(imgs)
         target_idx = self.classes_dict[item.label]
-        print("---Lectura Video  %s seconds ---" % (time.time() - start_time))
-        start_time = time.time()
 
         if self.nclips > -1:
             num_frames_necessary = self.clip_size * self.nclips * self.step_size
@@ -155,17 +97,12 @@ class VideoFolder(torch.utils.data.Dataset):
 
         imgs = imgs[offset: num_frames_necessary + offset: self.step_size]
 
-        print("---Cortar Video  %s seconds ---" % (time.time() - start_time))
-        start_time = time.time()
 
         if len(imgs) < (self.clip_size * self.nclips):
             imgs.extend([imgs[-1]] *
                         ((self.clip_size * self.nclips) - len(imgs)))
 
         # format data to torch
-        print("---Extender Video  %s seconds ---" % (time.time() - start_time))
-
-
         frames = torch.stack(imgs)
         data = (frames).permute(3,0,1,2) 
 
