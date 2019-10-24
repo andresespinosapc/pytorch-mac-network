@@ -447,6 +447,8 @@ class I3DMultiHead(nn.Module):
         self.name = name
         self.n_heads = len(num_classes_list)
         self.backbone_module = I3DBackbone(modality=modality)
+        for param in self.backbone_module.parameters():
+            param.requires_grad = False
         self.head_modules = nn.ModuleList()
         self.head_clfs = nn.ModuleList()
         for num_classes in num_classes_list:

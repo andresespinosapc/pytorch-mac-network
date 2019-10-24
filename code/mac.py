@@ -54,6 +54,7 @@ def load_model(cfg):
     model = model.to(device)
     model_ema = model_ema.to(device)
     concepts_per_label = concepts_per_label.to(device)
+    mul_concepts_per_label = mul_concepts_per_label.to(device)
     model.train()
     return model, model_ema, concepts_per_label, mul_concepts_per_label
 
