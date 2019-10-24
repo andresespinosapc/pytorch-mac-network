@@ -435,6 +435,13 @@ class Trainer():
                 if epoch - cfg.TRAIN.PATIENCE == self.previous_best_epoch:
                     break
 
+            # Evaluate multihead
+            # if cfg.MODEL.NAME == 'i3d_multihead':
+            #     with experiment.test():
+            #         for i in range(5):
+            #             self.train_epoch()
+            #             self.log_results()
+
         self.save_models(self.max_epochs)
         self.writer.close()
         print("Finished Training")

@@ -210,8 +210,6 @@ class I3DBackbone(nn.Module):
         self.mixed_4b = Mixed(480, [192, 96, 208, 16, 48, 64])
         self.mixed_4c = Mixed(512, [160, 112, 224, 24, 64, 64])
         self.mixed_4d = Mixed(512, [128, 128, 256, 24, 64, 64])
-        self.mixed_4e = Mixed(512, [112, 144, 288, 32, 64, 64])
-        self.mixed_4f = Mixed(528, [256, 160, 320, 32, 128, 128])
 
     def forward(self, out):
         # Preprocessing
@@ -226,13 +224,23 @@ class I3DBackbone(nn.Module):
         out = self.mixed_4b(out) # 512x18x14x14
         out = self.mixed_4c(out) # 512x18x14x14
         out = self.mixed_4d(out) # 512x18x14x14
+
+        return out
+
+
+class I3DCommonFinetune(nn.Module):
+    def __init__(self):
+        self.mixed_4e = Mixed(512, [112, 144, 288, 32, 64, 64])
+        self.mixed_4f = Mixed(528, [256, 160, 320, 32, 128, 128])
+
+    def forward(self, out):
         out = self.mixed_4e(out) # 528x18x14x14
         out = self.mixed_4f(out) # 832x18x14x14
 
         return out
 
 
-class I3DFinetune(nn.Module):
+class I3DHeadFinetune(nn.Module):
     def __init__(self, dropout_prob=0):
         super().__init__()
 
@@ -447,15 +455,17 @@ class I3DMultiHead(nn.Module):
         self.name = name
         self.n_heads = len(num_classes_list)
         self.backbone_module = I3DBackbone(modality=modality)
+        self.common_finetune_module = I3DCommonFinetune()
         self.head_modules = nn.ModuleList()
         self.head_clfs = nn.ModuleList()
         for num_classes in num_classes_list:
-            self.head_modules.append(I3DFinetune(dropout_prob=dropout_prob))
+            self.head_modules.append(I3DHeadFinetune(dropout_prob=dropout_prob))
             clf = I3DClassifier(1024, num_classes)
             self.head_clfs.append(clf)
 
     def forward(self, out):
         out = self.backbone_module(out)
+        out = self.common_finetune_module(out)
         out_list = []
         for i in range(self.n_heads):
             out_list.append(self.head_clfs[i](self.head_modules[i](out)))
@@ -470,11 +480,33 @@ class I3DMultiHead(nn.Module):
             ))
 
     def load_state_dict_from_i3d(self, state_dict):
+        # Load backbone state dict
         incompatible_keys = self.backbone_module.load_state_dict(state_dict, strict=False)
         self.check_missing_keys(incompatible_keys)
+        # Load common finetune state dict
+        incompatible_keys = self.common_finetune_module.load_state_dict(state_dict, strict=False)
+        self.check_missing_keys(incompatible_keys)
+        # Load head finetune state dicts
         for head in self.head_modules:
             incompatible_keys = head.load_state_dict(state_dict, strict=False)
             self.check_missing_keys(incompatible_keys)
+
+# class I3DMultiHeadLinear(nn.Module):
+#     def __init__(self, i3d_multihead, mul_concepts_per_label):
+#         self.i3d_multihead = i3d_multihead
+#         self.mul_concepts_per_label = mul_concepts_per_label
+#         self.clf = nn.Sequential([
+#             nn.Linear(300, 100),
+#             nn.Linear(100, 100),
+#             nn.Linear(100, 174),
+#         ])
+
+#     def forward(self, image):
+#         scores_list = self.i3d_multihead(image)
+#         for scores in scores_list:
+#             concept_pred = scores.argmax(dim=1)
+#             self.mul_concepts_per_label[concept_pred]
+
 
 
 class I3DFeats(I3D):
