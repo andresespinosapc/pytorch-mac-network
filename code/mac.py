@@ -48,6 +48,12 @@ def load_model(cfg):
         )
         model = I3DMultiHead(num_classes_list=num_classes_list)
         model_ema = I3DMultiHead(num_classes_list=num_classes_list)
+
+        # Load backbone checkpoint
+        if cfg.MODEL.I3D_BACKBONE_CHECKPOINT:
+            state_dict = torch.load(cfg.MODEL.I3D_BACKBONE_CHECKPOINT)
+            model.load_state_dict_from_i3d(state_dict)
+            model_ema.load_state_dict_from_i3d(state_dict)
     for param in model_ema.parameters():
         param.requires_grad = False
 
