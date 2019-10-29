@@ -44,7 +44,7 @@ class FocalLoss(nn.Module):
                  reduction: Optional[str] = 'mean') -> None:
         super(FocalLoss, self).__init__()
         self.alpha: float = alpha
-        self.gamma: torch.Tensor = torch.tensor(gamma)
+        self.gamma: nn.Parameter = nn.Parameter(torch.tensor(gamma), requires_grad=False)
         self.reduction: Optional[str] = reduction
         self.eps: float = 1e-6
 
