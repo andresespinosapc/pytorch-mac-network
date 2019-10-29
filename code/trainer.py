@@ -27,6 +27,7 @@ from utils import mkdir_p, save_model, AverageMeter, \
 from datasets.s2s_features import S2SFeatureDataset
 from datasets.s2s_videos import VideoFolder
 from datasets.transforms_video import *
+from focal_loss import FocalLoss
 import mac
 
 from config import cfg
@@ -197,7 +198,12 @@ class Trainer():
 
         self.print_info()
 
-        self.main_loss_fn = torch.nn.CrossEntropyLoss().to(device)
+        if cfg.TRAIN.LOSS_FUNCTION == 'cross_entropy':
+            self.main_loss_fn = torch.nn.CrossEntropyLoss().to(device)
+        elif cfg.TRAIN.LOSS_FUNCTION == 'focal':
+            alpha = cfg.TRAIN.FOCAL_LOSS_ALPHA
+            gamma = cfg.TRAIN.FOCAL_LOSS_GAMMA
+            self.main_loss_fn = FocalLoss(alpha, gamma).to(device)
         self.concept_loss_fn = torch.nn.BCELoss().to(device)
 
     # def loss_fn(self, target, scores, concepts_out):
