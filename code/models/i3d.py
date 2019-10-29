@@ -230,6 +230,8 @@ class I3DBackbone(nn.Module):
 
 class I3DCommonFinetune(nn.Module):
     def __init__(self):
+        super().__init__()
+
         self.mixed_4e = Mixed(512, [112, 144, 288, 32, 64, 64])
         self.mixed_4f = Mixed(528, [256, 160, 320, 32, 128, 128])
 
