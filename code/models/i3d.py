@@ -36,6 +36,14 @@ def simplify_padding(padding_shapes):
     return all_same, padding_init
 
 
+def check_missing_keys(incompatible_keys):
+    missing_keys = incompatible_keys.missing_keys
+    if len(missing_keys) > 1:
+        raise RuntimeError('Missing key(s) in state_dict: {}'.format(
+            ', '.join('"{}"'.format(k) for k in missing_keys)
+        ))
+
+
 class Unit3Dpy(nn.Module):
     def __init__(self,
                  in_channels,
@@ -446,6 +454,42 @@ class I3D(nn.Module):
         self.load_state_dict(state_dict)
 
 
+class I3DFinetune(nn.Module):
+    def __init__(self,
+                 num_classes,
+                 modality='rgb',
+                 dropout_prob=0,
+                 name='inception'):
+        super().__init__()
+
+        self.name = name
+        self.backbone_module = I3DBackbone(modality=modality)
+        for param in self.backbone_module.parameters():
+            param.requires_grad = False
+        self.finetune_module1 = I3DCommonFinetune()
+        self.finetune_module2 = I3DHeadFinetune(dropout_prob=dropout_prob)
+        self.clf = I3DClassifier(1024, num_classes)
+
+    def forward(self, out):
+        out = self.backbone_module(out)
+        out = self.finetune_module1(out)
+        out = self.finetune_module2(out)
+        out = self.clf(out)
+
+        return out
+
+    def load_state_dict_from_i3d(self, state_dict):
+        # Load backbone state dict
+        incompatible_keys = self.backbone_module.load_state_dict(state_dict, strict=False)
+        check_missing_keys(incompatible_keys)
+        # Load common finetune state dict
+        incompatible_keys = self.finetune_module1.load_state_dict(state_dict, strict=False)
+        check_missing_keys(incompatible_keys)
+        # Load head finetune state dicts
+        incompatible_keys = self.finetune_module2.load_state_dict(state_dict, strict=False)
+        check_missing_keys(incompatible_keys)    
+
+
 class I3DMultiHead(nn.Module):
     def __init__(self,
                 num_classes_list,
@@ -476,61 +520,17 @@ class I3DMultiHead(nn.Module):
 
         return out_list
 
-    def check_missing_keys(self, incompatible_keys):
-        missing_keys = incompatible_keys.missing_keys
-        if len(missing_keys) > 1:
-            raise RuntimeError('Missing key(s) in state_dict: {}'.format(
-                ', '.join('"{}"'.format(k) for k in missing_keys)
-            ))
-
     def load_state_dict_from_i3d(self, state_dict):
         # Load backbone state dict
         incompatible_keys = self.backbone_module.load_state_dict(state_dict, strict=False)
-        self.check_missing_keys(incompatible_keys)
+        check_missing_keys(incompatible_keys)
         # Load common finetune state dict
         incompatible_keys = self.common_finetune_module.load_state_dict(state_dict, strict=False)
-        self.check_missing_keys(incompatible_keys)
+        check_missing_keys(incompatible_keys)
         # Load head finetune state dicts
         for head in self.head_modules:
             incompatible_keys = head.load_state_dict(state_dict, strict=False)
-            self.check_missing_keys(incompatible_keys)
-
-# class I3DMultiHeadLinear(nn.Module):
-#     def __init__(self, i3d_multihead, mul_concepts_per_label):
-#         self.i3d_multihead = i3d_multihead
-#         self.mul_concepts_per_label = mul_concepts_per_label
-#         self.clf = nn.Sequential([
-#             nn.Linear(300, 100),
-#             nn.Linear(100, 100),
-#             nn.Linear(100, 174),
-#         ])
-
-#     def forward(self, image):
-#         scores_list = self.i3d_multihead(image)
-#         for scores in scores_list:
-#             concept_pred = scores.argmax(dim=1)
-#             self.mul_concepts_per_label[concept_pred]
-
-
-
-class I3DFeats(I3D):
-    def forward(self, inp):
-        # Preprocessing
-        out = self.conv3d_1a_7x7(inp) # 64x36x112x112
-        out = self.maxPool3d_2a_3x3(out) # 64x36x56x56
-        out = self.conv3d_2b_1x1(out) # 64x36x56x56
-        out = self.conv3d_2c_3x3(out) # 192x36x56x56
-        out = self.maxPool3d_3a_3x3(out) # 192x36x28x28
-        out = self.mixed_3b(out) # 256x36x28x28
-        out = self.mixed_3c(out) # 480x36x28x28
-        out = self.maxPool3d_4a_3x3(out) # 480x18x14x14
-        out = self.mixed_4b(out) # 512x18x14x14
-        out = self.mixed_4c(out) # 512x18x14x14
-        out = self.mixed_4d(out) # 512x18x14x14
-        out = self.mixed_4e(out) # 528x18x14x14
-        out = self.mixed_4f(out) # 528x18x14x14
-        
-        return out
+            check_missing_keys(incompatible_keys)
 
 
 def get_conv_params(sess, name, bias=False):

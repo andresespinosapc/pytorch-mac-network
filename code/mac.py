@@ -9,7 +9,7 @@ from torch.autograd import Variable
 from utils import *
 from models.multi_column import MultiColumn
 from models import model3D_1
-from models.i3d import I3DMultiHead
+from models.i3d import I3DMultiHead, I3DFinetune
 
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -48,6 +48,16 @@ def load_model(cfg):
         )
         model = I3DMultiHead(num_classes_list=num_classes_list)
         model_ema = I3DMultiHead(num_classes_list=num_classes_list)
+
+        # Load backbone checkpoint
+        if cfg.MODEL.I3D_BACKBONE_CHECKPOINT:
+            state_dict = torch.load(cfg.MODEL.I3D_BACKBONE_CHECKPOINT)
+            model.load_state_dict_from_i3d(state_dict)
+            model_ema.load_state_dict_from_i3d(state_dict)
+    elif cfg.MODEL.NAME == 'i3d_finetune':
+        num_classes = labels_matrix.shape[0]
+        model = I3DFinetune(num_classes=num_classes)
+        model_ema = I3DFinetune(num_classes=num_classes)
 
         # Load backbone checkpoint
         if cfg.MODEL.I3D_BACKBONE_CHECKPOINT:

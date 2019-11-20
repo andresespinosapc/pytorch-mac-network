@@ -241,10 +241,15 @@ class Trainer():
         batch_size = target.shape[0]
         loss = 0
 
-        if self.cfg.MODEL.NAME == 'mac':
-            scores, concepts_out = model_out
+        if self.cfg.MODEL.NAME in ['mac', 'i3d_finetune']:
+            if len(model_out) == 1:
+                scores = model_out
+            else:
+                scores, concepts_out = model_out
             loss += self.main_loss_fn(scores, target)
             if self.cfg.MODEL.CONCEPT_AUX_TASK:
+                if len(model_out) == 1:
+                    raise NotImplementedError('This model does not predict concepts')
                 concepts_target = self.concepts_per_label[target]
                 loss += self.concept_loss_fn(concepts_out, concepts_target) * self.cfg.MODEL.CONCEPT_AUX_WEIGHT
 
@@ -317,7 +322,7 @@ class Trainer():
         load_model(self.model_ema, None, iteration, model_dir, model_name='model_ema')
 
     def init_meters(self, ema=False):
-        if self.cfg.MODEL.NAME == 'mac':
+        if self.cfg.MODEL.NAME in ['mac', 'i3d_finetune']:
             self.meters = {
                 'loss': AverageMeter(),
                 'top1': AverageMeter(),
@@ -406,7 +411,7 @@ class Trainer():
             #     train_accuracy = 0.99 * train_accuracy + 0.01 * accuracy
             # self.total_epoch_loss += loss.item()
 
-            if self.cfg.MODEL.NAME == 'mac':
+            if self.cfg.MODEL.NAME in ['mac', 'i3d_finetune']:
                 pbar.set_description(
                     'Epoch: {}; Avg Loss: {:.5f}; Avg Top1: {:.5f}; Avg Top5: {:.5f}'.format(
                         epoch + 1,
@@ -468,8 +473,8 @@ class Trainer():
         for k, v in val_metrics.items():
             self.writer.add_scalar('val_{}'.format(k), v, epoch)
 
-        if self.cfg.MODEL.NAME == 'mac':
-            val_accuracy, val_accuracy_ema = val_metrics['avg_top1'], val_metrics['avg_top1_ema']
+        if self.cfg.MODEL.NAME in ['mac', 'i3d_finetune']:
+            val_accuracy, val_accuracy_ema = val_metrics['avg_top1'], val_metrics['avg_ema_top1']
             print("Epoch: {}\tVal Top1: {},\tVal Top1 EMA: {},\tVal Avg Loss: {},\tLR: {}".
                 format(epoch, val_accuracy, val_accuracy_ema, val_metrics['avg_loss'], self.lr))
         elif self.cfg.MODEL.NAME == 'i3d_multihead':
