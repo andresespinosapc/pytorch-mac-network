@@ -258,6 +258,8 @@ class Trainer():
                 self.update_meters(cur_loss, cur_target, scores, preffix='head{}_'.format(i + 1), ema=ema)
                 
                 loss += cur_loss
+        else:
+            raise NotImplementedError('Model {} not implemented'.format(self.cfg.MODEL.NAME))
 
         return loss
 
@@ -331,6 +333,8 @@ class Trainer():
                     preffix + 'top1': AverageMeter(),
                     preffix + 'top5': AverageMeter(),
                 })
+        else:
+            raise NotImplementedError('Model {} not implemented'.format(self.cfg.MODEL.NAME))
 
         if ema:
             for key in list(self.meters.keys()):
@@ -421,6 +425,8 @@ class Trainer():
                         self.meters['head4_top1'].avg,
                     )
                 )
+            else:
+                raise NotImplementedError('Model {} not implemented'.format(self.cfg.MODEL.NAME))
 
         metrics = { 'avg_{}'.format(key): meter.avg for key, meter in self.meters.items() }
         experiment.log_metrics(metrics)
@@ -470,6 +476,8 @@ class Trainer():
             val_accuracy, val_accuracy_ema = val_metrics['avg_head1_top1'], val_metrics['avg_ema_head1_top1']
             print("Epoch: {}\tVal Head1Top1 EMA: {},\tVal Head2Top1 EMA: {},\tVal Head3Top1 EMA: {},\tVal Head4Top1 EMA: {},\tLR: {}".
                 format(epoch, val_metrics['avg_ema_head1_top1'], val_metrics['avg_ema_head2_top1'], val_metrics['avg_ema_head3_top1'], val_metrics['avg_ema_head4_top1'], self.lr))
+        else:
+            raise NotImplementedError('Model {} not implemented'.format(self.cfg.MODEL.NAME))
 
         if val_accuracy > self.previous_best_acc:
             self.previous_best_acc = val_accuracy

@@ -54,6 +54,9 @@ def load_model(cfg):
             state_dict = torch.load(cfg.MODEL.I3D_BACKBONE_CHECKPOINT)
             model.load_state_dict_from_i3d(state_dict)
             model_ema.load_state_dict_from_i3d(state_dict)
+    else:
+        raise NotImplementedError('Model {} not implemented'.format(cfg.MODEL.NAME))
+
     for param in model_ema.parameters():
         param.requires_grad = False
 
