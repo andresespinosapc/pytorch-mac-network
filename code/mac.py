@@ -46,8 +46,9 @@ def load_model(cfg):
             lambda i: mul_concepts_per_label[:, i].max().item() + 1,
             range(mul_concepts_per_label.shape[1]))
         )
-        model = I3DMultiHead(num_classes_list=num_classes_list)
-        model_ema = I3DMultiHead(num_classes_list=num_classes_list)
+        final_num_classes = labels_matrix.shape[0]
+        model = I3DMultiHead(num_classes_list=num_classes_list, final_num_classes=final_num_classes)
+        model_ema = I3DMultiHead(num_classes_list=num_classes_list, final_num_classes=final_num_classes)
 
         # Load backbone checkpoint
         if cfg.MODEL.I3D_BACKBONE_CHECKPOINT:

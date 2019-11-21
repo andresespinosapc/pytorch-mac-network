@@ -493,6 +493,7 @@ class I3DFinetune(nn.Module):
 class I3DMultiHead(nn.Module):
     def __init__(self,
                 num_classes_list,
+                final_num_classes,
                 modality='rgb',
                 dropout_prob=0,
                 name='inception'):
@@ -511,14 +512,21 @@ class I3DMultiHead(nn.Module):
             clf = I3DClassifier(1024, num_classes)
             self.head_clfs.append(clf)
 
+        self.final_clf = I3DClassifier(1024 * len(num_classes_list), final_num_classes)
+
     def forward(self, out):
         out = self.backbone_module(out)
         out = self.common_finetune_module(out)
-        out_list = []
+        head_feats_list = []
+        head_out_list = []
         for i in range(self.n_heads):
-            out_list.append(self.head_clfs[i](self.head_modules[i](out)))
+            head_feats = self.head_modules[i](out)
+            head_feats_list.append(head_feats)
+            head_out_list.append(self.head_clfs[i](head_feats))
 
-        return out_list
+        final_out = self.final_clf(torch.cat(head_feats_list, dim=1))
+
+        return head_out_list, final_out
 
     def load_state_dict_from_i3d(self, state_dict):
         # Load backbone state dict

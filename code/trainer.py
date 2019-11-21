@@ -255,14 +255,18 @@ class Trainer():
 
             self.update_meters(loss, target, scores, ema=ema)
         elif self.cfg.MODEL.NAME == 'i3d_multihead':
+            heads_out, final_out = model_out
             concepts_target = self.mul_concepts_per_label[target]
-            for i, scores in enumerate(model_out):
+            for i, scores in enumerate(heads_out):
                 cur_target = concepts_target[:, i]
                 cur_loss = self.main_loss_fn(scores, cur_target)
 
                 self.update_meters(cur_loss, cur_target, scores, preffix='head{}_'.format(i + 1), ema=ema)
                 
-                loss += cur_loss
+                loss += cur_loss * self.cfg.MODEL.HEAD_AUX_WEIGHT
+            cur_loss = self.main_loss_fn(final_out, target)
+            self.update_meters(cur_loss, target, final_out, ema=ema)
+            loss += cur_loss
         else:
             raise NotImplementedError('Model {} not implemented'.format(self.cfg.MODEL.NAME))
 
@@ -330,7 +334,11 @@ class Trainer():
             }
         elif self.cfg.MODEL.NAME == 'i3d_multihead':
             n_heads = self.model.n_heads
-            self.meters = {}
+            self.meters = {
+                'loss': AverageMeter(),
+                'top1': AverageMeter(),
+                'top5': AverageMeter(),
+            }
             for i in range(n_heads):
                 preffix = 'head{}_'.format(i + 1)
                 self.meters.update({
@@ -411,7 +419,7 @@ class Trainer():
             #     train_accuracy = 0.99 * train_accuracy + 0.01 * accuracy
             # self.total_epoch_loss += loss.item()
 
-            if self.cfg.MODEL.NAME in ['mac', 'i3d_finetune']:
+            if self.cfg.MODEL.NAME in ['mac', 'i3d_finetune', 'i3d_multihead']:
                 pbar.set_description(
                     'Epoch: {}; Avg Loss: {:.5f}; Avg Top1: {:.5f}; Avg Top5: {:.5f}'.format(
                         epoch + 1,
@@ -420,16 +428,16 @@ class Trainer():
                         self.meters['top5'].avg,
                     )
                 )
-            elif self.cfg.MODEL.NAME == 'i3d_multihead':
-                pbar.set_description(
-                    'Epoch: {}; Head1 Top1: {:.5f}; Head2 Top1: {:.5f}; Head3 Top1: {:.5f}; Head4 Top1: {:.5f}'.format(
-                        epoch + 1,
-                        self.meters['head1_top1'].avg,
-                        self.meters['head2_top1'].avg,
-                        self.meters['head3_top1'].avg,
-                        self.meters['head4_top1'].avg,
-                    )
-                )
+            # elif self.cfg.MODEL.NAME == 'i3d_multihead':
+            #     pbar.set_description(
+            #         'Epoch: {}; Head1 Top1: {:.5f}; Head2 Top1: {:.5f}; Head3 Top1: {:.5f}; Head4 Top1: {:.5f}'.format(
+            #             epoch + 1,
+            #             self.meters['head1_top1'].avg,
+            #             self.meters['head2_top1'].avg,
+            #             self.meters['head3_top1'].avg,
+            #             self.meters['head4_top1'].avg,
+            #         )
+            #     )
             else:
                 raise NotImplementedError('Model {} not implemented'.format(self.cfg.MODEL.NAME))
 
@@ -473,14 +481,14 @@ class Trainer():
         for k, v in val_metrics.items():
             self.writer.add_scalar('val_{}'.format(k), v, epoch)
 
-        if self.cfg.MODEL.NAME in ['mac', 'i3d_finetune']:
+        if self.cfg.MODEL.NAME in ['mac', 'i3d_finetune', 'i3d_multihead']:
             val_accuracy, val_accuracy_ema = val_metrics['avg_top1'], val_metrics['avg_ema_top1']
             print("Epoch: {}\tVal Top1: {},\tVal Top1 EMA: {},\tVal Avg Loss: {},\tLR: {}".
                 format(epoch, val_accuracy, val_accuracy_ema, val_metrics['avg_loss'], self.lr))
-        elif self.cfg.MODEL.NAME == 'i3d_multihead':
-            val_accuracy, val_accuracy_ema = val_metrics['avg_head1_top1'], val_metrics['avg_ema_head1_top1']
-            print("Epoch: {}\tVal Head1Top1 EMA: {},\tVal Head2Top1 EMA: {},\tVal Head3Top1 EMA: {},\tVal Head4Top1 EMA: {},\tLR: {}".
-                format(epoch, val_metrics['avg_ema_head1_top1'], val_metrics['avg_ema_head2_top1'], val_metrics['avg_ema_head3_top1'], val_metrics['avg_ema_head4_top1'], self.lr))
+        # elif self.cfg.MODEL.NAME == 'i3d_multihead':
+        #     val_accuracy, val_accuracy_ema = val_metrics['avg_head1_top1'], val_metrics['avg_ema_head1_top1']
+        #     print("Epoch: {}\tVal Head1Top1 EMA: {},\tVal Head2Top1 EMA: {},\tVal Head3Top1 EMA: {},\tVal Head4Top1 EMA: {},\tLR: {}".
+        #         format(epoch, val_metrics['avg_ema_head1_top1'], val_metrics['avg_ema_head2_top1'], val_metrics['avg_ema_head3_top1'], val_metrics['avg_ema_head4_top1'], self.lr))
         else:
             raise NotImplementedError('Model {} not implemented'.format(self.cfg.MODEL.NAME))
 
