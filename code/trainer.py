@@ -242,13 +242,13 @@ class Trainer():
         loss = 0
 
         if self.cfg.MODEL.NAME in ['mac', 'i3d_finetune']:
-            if len(model_out) == 1:
+            if self.cfg.MODEL.NAME == 'i3d_finetune':
                 scores = model_out
             else:
                 scores, concepts_out = model_out
             loss += self.main_loss_fn(scores, target)
             if self.cfg.MODEL.CONCEPT_AUX_TASK:
-                if len(model_out) == 1:
+                if self.cfg.MODEL.NAME == 'i3d_finetune':
                     raise NotImplementedError('This model does not predict concepts')
                 concepts_target = self.concepts_per_label[target]
                 loss += self.concept_loss_fn(concepts_out, concepts_target) * self.cfg.MODEL.CONCEPT_AUX_WEIGHT
