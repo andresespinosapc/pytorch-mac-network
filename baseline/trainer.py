@@ -28,7 +28,7 @@ from utils import mkdir_p, save_model, AverageMeter, \
 from datasets.s2s_features import S2SFeatureDataset
 from datasets.s2s_videos import VideoFolder
 from datasets.transforms_video import *
-from i3d import I3D, Mixed, Unit3Dpy
+from i3d import I3D, Mixed, Unit3Dpy, MaxPool3dTFPadding
 
 import argparse
 import random
@@ -205,6 +205,11 @@ class Trainer():
     def prepare_to_train(self):
         for param in self.model.parameters():
             param.requires_grad = False
+
+        self.model.mixed_4e = Mixed(512, [112, 144, 288, 32, 64, 64])
+        self.model.mixed_4f = Mixed(528, [256, 160, 320, 32, 128, 128])
+        self.model.maxPool3d_5a_2x2 = MaxPool3dTFPadding(
+            kernel_size=(2, 2, 2), stride=(2, 2, 2), padding='SAME')
 
         self.model.mixed_5b = Mixed(832, [256, 160, 320, 32, 128, 128])
         self.model.mixed_5c = Mixed(832, [384, 192, 384, 48, 128, 128])

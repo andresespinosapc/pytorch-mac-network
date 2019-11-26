@@ -45,6 +45,8 @@ DATASET:
     LABELS_JSON_PATH: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/something-something-v2-labels.json'
     # TRAIN_JSON_PATH: '/mnt/nas/GrimaRepo/aespinosa/smth-smth-v2-baseline-with-models/notebooks/train_10percent.json'
     # VAL_JSON_PATH: '/mnt/nas/GrimaRepo/aespinosa/smth-smth-v2-baseline-with-models/notebooks/val_10percent.json'
-    TRAIN_JSON_PATH: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/something-something-v2-train.json'
-    VAL_JSON_PATH: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/something-something-v2-validation.json'
+    # TRAIN_JSON_PATH: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/something-something-v2-train.json'
+    # VAL_JSON_PATH: '/mnt/nas2/GrimaRepo/datasets/20BN-SOMETHING-SOMETHING-V2/something-something-v2-validation.json'
+    TRAIN_JSON_PATH: '/home/araymond/CAN/word_analysis/something-something-v2-train_reduced.json'
+    VAL_JSON_PATH: '/home/araymond/CAN/word_analysis/something-something-v2-val_reduced.json'
     LEARNED_EMBEDDINGS: False
